@@ -1,0 +1,454 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type {
+  Avatar,
+  MealLog,
+  Profile,
+  SleepLog,
+  SleepQuality,
+  Stats,
+  WorkoutLog,
+  WorkoutSet,
+} from "../domain/types";
+import { createAvatar, addExp, INITIAL_STATS } from "../domain/avatar";
+import { EXERCISE_MAP } from "../domain/exercises";
+import {
+  computeBaseExp,
+  computeGold,
+  computeStatGains,
+  addStats,
+} from "../domain/expEngine";
+import { computeCondition } from "../domain/meals";
+import { computeSleepCondition } from "../domain/sleep";
+import { evaluateDailyQuests } from "../domain/quests";
+import {
+  emptyPartVolumes,
+  categoryToPart,
+  partTiers,
+  type PartVolumes,
+} from "../domain/parts";
+import { overallMuscle } from "../domain/build";
+import { girthFromBmi, computeBmi } from "../domain/physique";
+import { bossAt } from "../domain/bosses";
+import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
+import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
+
+export function todayKey(d = new Date()): string {
+  // ローカル時刻基準の YYYY-MM-DD。
+  // toISOString() は UTC なので、JST等では日付の境目がズレる(深夜0時でなく朝9時)。
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export interface FloatingReward {
+  exp: number;
+  gold: number;
+  levelsGained: number;
+  statText: string;
+  modifier: number;
+  newBest?: string; // 自己ベスト更新メッセージ(ライバルは自分)
+  bossDefeated?: string; // ボス撃破名
+  expBoostUsed?: boolean; // コンディションドリンク発動
+}
+
+/** キャラメイク時の体格スナップショット(Before表示用 — 原則2) */
+export interface StartSnapshot {
+  heightCm: number;
+  weightKg: number;
+  level: number;
+  stats: Stats;
+  date: string;
+}
+
+/** 自己ベスト(ライバルは自分 — 原則3。他人との比較は持たない) */
+export interface Records {
+  bestVolumeByExercise: Record<string, number>;
+  bestDayExp: number;
+  bestStreak: number;
+}
+
+export interface BossState {
+  index: number;
+  hp: number;
+}
+
+/** その種目1回ぶんのボリューム(自重は体重を負荷に含める) */
+function workoutVolume(
+  sets: WorkoutSet[],
+  bodyweight: boolean,
+  bwFactor: number,
+  userWeightKg: number,
+): number {
+  return sets.reduce((acc, s) => {
+    if (s.reps <= 0) return acc;
+    const load = bodyweight
+      ? userWeightKg * bwFactor + Math.max(0, s.weight)
+      : Math.max(0, s.weight);
+    return acc + load * s.reps;
+  }, 0);
+}
+
+interface GameState {
+  profile: Profile | null;
+  avatar: Avatar;
+  workoutLogs: WorkoutLog[];
+  mealLogs: MealLog[];
+  sleepLogs: SleepLog[];
+  streak: { count: number; lastDate: string | null };
+  claimedQuestsByDate: Record<string, string[]>;
+  lastReward: FloatingReward | null;
+  startSnapshot: StartSnapshot | null;
+  records: Records;
+  boss: BossState;
+  bossesDefeated: number;
+  claimedAchievements: string[];
+  expBoostCharges: number;
+  streakShields: number;
+  partVolumes: PartVolumes;
+  bodyFat: number | null; // 全身の体脂肪 0..4。null=BMIから自動
+  lastSetsByExercise: Record<string, WorkoutSet[]>; // 前回値プリフィル用
+  lastMinutesByExercise: Record<string, number>;
+  favorites: string[]; // お気に入り種目ID
+
+  initProfile: (p: Profile) => void;
+  setBodyFat: (n: number) => void;
+  toggleFavorite: (exerciseId: string) => void;
+  logWorkout: (exerciseId: string, input: { sets?: WorkoutSet[]; minutes?: number }) => void;
+  logMeal: (meal: Omit<MealLog, "id" | "date">) => void;
+  logSleep: (quality: SleepQuality) => void;
+  claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
+  claimAchievement: (id: string, rewardGold: number) => void;
+  buyItem: (id: ItemEffect) => void;
+  clearReward: () => void;
+  resetAll: () => void;
+}
+
+/** ストリーク更新。シールドがあれば途切れを1回防ぐ。 */
+function applyStreak(
+  streak: { count: number; lastDate: string | null },
+  today: string,
+  shields: number,
+): { count: number; lastDate: string; shieldUsed: boolean } {
+  if (streak.lastDate === today) {
+    return { count: streak.count, lastDate: today, shieldUsed: false };
+  }
+  const yesterday = todayKey(new Date(Date.now() - 86400000));
+  if (streak.lastDate === yesterday || streak.lastDate === null) {
+    const count = streak.lastDate === yesterday ? streak.count + 1 : 1;
+    return { count, lastDate: today, shieldUsed: false };
+  }
+  // 途切れ。シールドがあれば継続を守る。
+  if (shields > 0) {
+    return { count: streak.count + 1, lastDate: today, shieldUsed: true };
+  }
+  return { count: 1, lastDate: today, shieldUsed: false };
+}
+
+const FRESH = {
+  avatar: createAvatar(),
+  workoutLogs: [] as WorkoutLog[],
+  mealLogs: [] as MealLog[],
+  sleepLogs: [] as SleepLog[],
+  streak: { count: 0, lastDate: null as string | null },
+  claimedQuestsByDate: {} as Record<string, string[]>,
+  lastReward: null as FloatingReward | null,
+  startSnapshot: null as StartSnapshot | null,
+  records: { bestVolumeByExercise: {}, bestDayExp: 0, bestStreak: 0 } as Records,
+  boss: { index: 0, hp: bossAt(0).maxHp } as BossState,
+  bossesDefeated: 0,
+  claimedAchievements: [] as string[],
+  expBoostCharges: 0,
+  streakShields: 0,
+  partVolumes: emptyPartVolumes(),
+  bodyFat: null as number | null,
+  lastSetsByExercise: {} as Record<string, WorkoutSet[]>,
+  lastMinutesByExercise: {} as Record<string, number>,
+  favorites: [] as string[],
+};
+
+export const useGameStore = create<GameState>()(
+  persist(
+    (set, get) => ({
+      profile: null,
+      ...FRESH,
+
+      initProfile: (p) =>
+        set({
+          profile: p,
+          // 体脂肪の初期値は BMI から(以後ユーザーが調整可能)
+          bodyFat: girthFromBmi(computeBmi(p.heightCm, p.weightKg)),
+          // 「最初の自分」を保存。以後ずっと Before として残る(原則2)
+          startSnapshot: {
+            heightCm: p.heightCm,
+            weightKg: p.weightKg,
+            level: 1,
+            stats: { ...INITIAL_STATS },
+            date: todayKey(),
+          },
+        }),
+
+      setBodyFat: (n) => set({ bodyFat: Math.max(0, Math.min(4, n)) }),
+
+      toggleFavorite: (id) =>
+        set((s) => ({
+          favorites: s.favorites.includes(id)
+            ? s.favorites.filter((x) => x !== id)
+            : [...s.favorites, id],
+        })),
+
+      logWorkout: (exerciseId, input) => {
+        const state = get();
+        const profile = state.profile;
+        const exercise = EXERCISE_MAP[exerciseId];
+        if (!profile || !exercise) return;
+
+        const today = todayKey();
+        const todaysMeals = state.mealLogs.filter((m) => m.date === today);
+        const condition = computeCondition(todaysMeals, profile);
+        const todaySleep = state.sleepLogs.find((s) => s.date === today) ?? null;
+        const sleepCond = computeSleepCondition(todaySleep?.quality ?? null);
+
+        const baseExp = computeBaseExp(exercise, input, profile.weightKg);
+        if (baseExp <= 0) return;
+
+        // コンディション補正(食事×睡眠)
+        let earnedExp = Math.max(1, Math.round(baseExp * condition.expModifier * sleepCond.expModifier));
+        // コンディションドリンク(EXPブースト)を1チャージ消費
+        let expBoostCharges = state.expBoostCharges;
+        let expBoostUsed = false;
+        if (expBoostCharges > 0) {
+          earnedExp = Math.round(earnedExp * 1.5);
+          expBoostCharges -= 1;
+          expBoostUsed = true;
+        }
+        const earnedGold = computeGold(earnedExp);
+        const statGains = computeStatGains(exercise, earnedExp);
+
+        const log: WorkoutLog = {
+          id: crypto.randomUUID(),
+          date: today,
+          exerciseId,
+          exerciseName: exercise.name,
+          category: exercise.category,
+          sets: input.sets ?? [],
+          minutes: input.minutes,
+          baseExp,
+          earnedExp,
+          earnedGold,
+          statGains,
+        };
+
+        // --- ボス戦: 獲得EXPがダメージ ---
+        let bossIndex = state.boss.index;
+        let bossHp = state.boss.hp - earnedExp;
+        let bossDefeated: string | undefined;
+        let bossGold = 0;
+        let bossExp = 0;
+        let bossesDefeated = state.bossesDefeated;
+        if (bossHp <= 0) {
+          const b = bossAt(bossIndex);
+          bossDefeated = b.name;
+          bossGold = b.rewardGold;
+          bossExp = b.rewardExp;
+          bossesDefeated += 1;
+          bossIndex += 1;
+          bossHp = bossAt(bossIndex).maxHp; // 次のボスは満タンから(オーバーキル持ち越しなし)
+        }
+
+        // --- レベル/ゴールド(ワークアウト＋ボス報酬) ---
+        const { avatar: leveled, levelsGained } = addExp(state.avatar, earnedExp + bossExp);
+        const avatar: Avatar = {
+          ...leveled,
+          stats: addStats(leveled.stats, statGains),
+          gold: leveled.gold + earnedGold + bossGold,
+        };
+
+        const statText = Object.entries(statGains)
+          .map(([k, v]) => `${k.toUpperCase()} +${v}`)
+          .join("  ");
+
+        // --- ストリーク(シールド対応) ---
+        const streakRes = applyStreak(state.streak, today, state.streakShields);
+        const streakShields = state.streakShields - (streakRes.shieldUsed ? 1 : 0);
+
+        // --- 自己ベスト判定(ライバルは自分) ---
+        const records = state.records;
+        let newBest: string | undefined;
+        const volume = workoutVolume(
+          input.sets ?? [],
+          exercise.bodyweight,
+          exercise.bodyweightFactor ?? 0.6,
+          profile.weightKg,
+        );
+        // --- 部位別ボリュームの累積(部位ごとに見た目が育つ) ---
+        const partKey = categoryToPart(exercise.category);
+        const partGain = exercise.category === "cardio" ? earnedExp * 4 : volume;
+        const partVolumes: PartVolumes = {
+          ...state.partVolumes,
+          [partKey]: state.partVolumes[partKey] + partGain,
+        };
+
+        const prevVolBest = records.bestVolumeByExercise[exerciseId] ?? 0;
+        const todayExp =
+          earnedExp +
+          state.workoutLogs
+            .filter((w) => w.date === today)
+            .reduce((a, w) => a + w.earnedExp, 0);
+
+        const nextRecords: Records = {
+          bestVolumeByExercise: { ...records.bestVolumeByExercise },
+          bestDayExp: Math.max(records.bestDayExp, todayExp),
+          bestStreak: Math.max(records.bestStreak, streakRes.count),
+        };
+        if (volume > prevVolBest && prevVolBest > 0) {
+          newBest = `${exercise.name} 自己ベスト更新！`;
+          nextRecords.bestVolumeByExercise[exerciseId] = volume;
+        } else {
+          nextRecords.bestVolumeByExercise[exerciseId] = Math.max(prevVolBest, volume);
+          if (todayExp > records.bestDayExp && records.bestDayExp > 0) {
+            newBest = "1日の最高EXPを更新！";
+          } else if (streakRes.count > records.bestStreak && records.bestStreak > 0) {
+            newBest = `最長ストリーク更新！ ${streakRes.count}日`;
+          }
+        }
+
+        set({
+          avatar,
+          workoutLogs: [log, ...state.workoutLogs],
+          streak: { count: streakRes.count, lastDate: streakRes.lastDate },
+          streakShields,
+          expBoostCharges,
+          records: nextRecords,
+          partVolumes,
+          lastSetsByExercise: input.sets
+            ? { ...state.lastSetsByExercise, [exerciseId]: input.sets }
+            : state.lastSetsByExercise,
+          lastMinutesByExercise: input.minutes
+            ? { ...state.lastMinutesByExercise, [exerciseId]: input.minutes }
+            : state.lastMinutesByExercise,
+          boss: { index: bossIndex, hp: bossHp },
+          bossesDefeated,
+          lastReward: {
+            exp: earnedExp,
+            gold: earnedGold + bossGold,
+            levelsGained,
+            statText,
+            modifier: Math.round(condition.expModifier * sleepCond.expModifier * 100) / 100,
+            newBest,
+            bossDefeated,
+            expBoostUsed,
+          },
+        });
+      },
+
+      logSleep: (quality) => {
+        const today = todayKey();
+        set((s) => ({
+          sleepLogs: [
+            { date: today, quality },
+            ...s.sleepLogs.filter((l) => l.date !== today),
+          ],
+        }));
+      },
+
+      logMeal: (meal) => {
+        const state = get();
+        const log: MealLog = {
+          ...meal,
+          id: crypto.randomUUID(),
+          date: todayKey(),
+        };
+        set({ mealLogs: [log, ...state.mealLogs] });
+      },
+
+      claimQuest: (questId, rewardExp, rewardGold) => {
+        const state = get();
+        const today = todayKey();
+        const claimed = state.claimedQuestsByDate[today] ?? [];
+        if (claimed.includes(questId)) return;
+
+        const { avatar: leveled, levelsGained } = addExp(state.avatar, rewardExp);
+        const avatar: Avatar = { ...leveled, gold: leveled.gold + rewardGold };
+
+        set({
+          avatar,
+          claimedQuestsByDate: {
+            ...state.claimedQuestsByDate,
+            [today]: [...claimed, questId],
+          },
+          lastReward: {
+            exp: rewardExp,
+            gold: rewardGold,
+            levelsGained,
+            statText: "クエスト達成！",
+            modifier: 1,
+          },
+        });
+      },
+
+      claimAchievement: (id, rewardGold) => {
+        const state = get();
+        if (state.claimedAchievements.includes(id)) return;
+        set({
+          avatar: { ...state.avatar, gold: state.avatar.gold + rewardGold },
+          claimedAchievements: [...state.claimedAchievements, id],
+          lastReward: {
+            exp: 0,
+            gold: rewardGold,
+            levelsGained: 0,
+            statText: "実績解除！",
+            modifier: 1,
+          },
+        });
+      },
+
+      buyItem: (id) => {
+        const state = get();
+        const item = SHOP_ITEMS.find((i) => i.id === id);
+        if (!item || state.avatar.gold < item.cost) return;
+        const patch: Partial<GameState> = {
+          avatar: { ...state.avatar, gold: state.avatar.gold - item.cost },
+        };
+        if (id === "expBoost") patch.expBoostCharges = state.expBoostCharges + 1;
+        if (id === "streakShield") patch.streakShields = state.streakShields + 1;
+        set(patch);
+      },
+
+      clearReward: () => set({ lastReward: null }),
+
+      resetAll: () => set({ profile: null, ...FRESH }),
+    }),
+    { name: "workout-game-v1" },
+  ),
+);
+
+// セレクタ的ヘルパー(コンポーネントから使う)
+export function selectToday(state: GameState) {
+  const today = todayKey();
+  const workouts = state.workoutLogs.filter((w) => w.date === today);
+  const meals = state.mealLogs.filter((m) => m.date === today);
+  const sleep = state.sleepLogs.find((s) => s.date === today) ?? null;
+  const quests = state.profile
+    ? evaluateDailyQuests(workouts, meals, state.profile)
+    : [];
+  const claimed = state.claimedQuestsByDate[today] ?? [];
+  return { today, workouts, meals, sleep, quests, claimed };
+}
+
+/** 実績の進捗と達成状況 */
+export function selectProgress(state: GameState): Progress {
+  const a = state.avatar;
+  const muscle = overallMuscle(partTiers(state.partVolumes));
+  return {
+    level: a.level,
+    totalExp: a.totalExp,
+    bestStreak: state.records.bestStreak,
+    totalWorkouts: state.workoutLogs.length,
+    bossesDefeated: state.bossesDefeated,
+    muscle,
+  };
+}
+
+export { ACHIEVEMENTS };
