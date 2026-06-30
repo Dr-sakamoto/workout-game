@@ -119,6 +119,12 @@ button {
 }
 .bar .fill-exp { background: repeating-linear-gradient(45deg, var(--exp) 0 6px, #5bb84d 6px 12px); }
 .bar .fill-hp { background: var(--hp); }
+.bar .fill-hp-warn { background: #d4900f; }
+.bar .fill-hp-danger {
+  background: var(--red);
+  animation: hp-danger-pulse 0.7s steps(2) infinite;
+}
+@keyframes hp-danger-pulse { 50% { opacity: 0.45; } }
 .bar-label {
   display: flex; justify-content: space-between;
   font-size: 8px; color: var(--muted); margin: 8px 0 3px;
@@ -312,6 +318,54 @@ input, select {
 }
 
 .toast .newbest { color: var(--amber); font-size: 11px; margin: 6px 0; }
+
+/* ---- サウンドトグル ---- */
+.sound-toggle { position: relative; }
+.sound-btn {
+  background: var(--panel-2);
+  border: 2px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  padding: 5px 7px;
+  line-height: 1;
+}
+.sound-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  box-shadow: 4px 4px 0 #00000077;
+  padding: 10px 12px;
+  z-index: 60;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 9px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.sound-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--amber);
+}
+
+/* ---- ペナルティトースト ---- */
+.toast.toast-penalty { border-color: var(--red); }
+.penalty-header { color: var(--red); font-size: 12px; margin-bottom: 10px; }
+.penalty-missed { font-size: 10px; color: var(--ink); margin-bottom: 8px; }
+.penalty-dmg { color: var(--red); font-size: 16px; margin: 4px 0 2px; }
+.penalty-total { color: var(--red); font-size: 10px; margin-bottom: 10px; }
+.penalty-hp-label { font-size: 8px; color: var(--muted); margin-bottom: 2px; }
+.btn-penalty-ok { background: var(--red); color: #fff; border-color: #800; }
 
 /* ---- 正面・背面を常時並べる ---- */
 .avatar-pair { display: flex; gap: 12px; justify-content: center; align-items: flex-end; }
