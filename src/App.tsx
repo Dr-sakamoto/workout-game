@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useGameStore } from "./store/useGameStore";
+import { useGameStore, todayKey } from "./store/useGameStore";
 import type { FloatingReward } from "./store/useGameStore";
 import { Onboarding } from "./components/Onboarding";
 import { AvatarPanel } from "./components/AvatarPanel";
@@ -9,6 +9,7 @@ import { QuestScreen } from "./components/QuestScreen";
 import { BossScreen } from "./components/BossScreen";
 import { ShopModal } from "./components/ShopModal";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { SleepSurveyPopup } from "./components/SleepSurveyPopup";
 import { soundEngine } from "./sounds/soundEngine";
 
 type Tab = "home" | "train" | "meal" | "boss" | "quest";
@@ -122,9 +123,14 @@ export default function App() {
   const profile = useGameStore((s) => s.profile);
   const gold = useGameStore((s) => s.avatar.gold);
   const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
+  const sleepLogs = useGameStore((s) => s.sleepLogs);
   const [tab, setTab] = useState<Tab>("home");
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sleepPopupDismissed, setSleepPopupDismissed] = useState(false);
+
+  const todaySleepLogged = sleepLogs.some((l) => l.date === todayKey());
+  const showSleepPopup = !!profile && !todaySleepLogged && !sleepPopupDismissed;
 
   useSoundEffects();
 
@@ -182,6 +188,9 @@ export default function App() {
 
       {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
       {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
+      {showSleepPopup && (
+        <SleepSurveyPopup onClose={() => setSleepPopupDismissed(true)} />
+      )}
       <PenaltyToast />
       <RewardToast />
     </div>
