@@ -28,7 +28,7 @@ function PenaltyToast() {
           {penalty.missedDays === 1 ? "昨日サボった！" : `${penalty.missedDays}日間サボった！`}
         </div>
         <div className="penalty-dmg">
-          -{penalty.damagePerDay} HP × {penalty.missedDays}日
+          攻撃力 {penalty.damagePerDay} × {penalty.missedDays}日
         </div>
         <div className="penalty-total">= -{penalty.totalDamage} HP ダメージ</div>
         <div className="penalty-hp-label">残りHP: {penalty.newHp} / {penalty.maxHp}</div>
