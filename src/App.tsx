@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useGameStore } from "./store/useGameStore";
+import type { FloatingReward } from "./store/useGameStore";
 import { Onboarding } from "./components/Onboarding";
 import { AvatarPanel } from "./components/AvatarPanel";
 import { WorkoutScreen } from "./components/WorkoutScreen";
@@ -7,30 +8,50 @@ import { MealScreen } from "./components/MealScreen";
 import { QuestScreen } from "./components/QuestScreen";
 import { BossScreen } from "./components/BossScreen";
 import { ShopModal } from "./components/ShopModal";
+import { SettingsScreen } from "./components/SettingsScreen";
 import { soundEngine } from "./sounds/soundEngine";
 
 type Tab = "home" | "train" | "meal" | "boss" | "quest";
 
+// 報酬 SE を一か所で管理するフック。各トーストに分散させない。
+function useSoundEffects() {
+  const lastReward = useGameStore((s) => s.lastReward);
+  const prev = useRef<FloatingReward | null>(null);
+
+  useEffect(() => {
+    if (lastReward && lastReward !== prev.current) {
+      prev.current = lastReward;
+      if (lastReward.source === "quest" || lastReward.source === "achievement") {
+        soundEngine.play("quest");
+      } else if (lastReward.bossDefeated) {
+        soundEngine.play("bossDefeat");
+      } else if (lastReward.levelsGained > 0) {
+        soundEngine.play("levelup");
+      } else {
+        soundEngine.play("workout");
+      }
+    }
+    if (!lastReward) prev.current = null;
+  }, [lastReward]);
+}
+
 function PenaltyToast() {
   const penalty = useGameStore((s) => s.lastPenalty);
   const clearPenalty = useGameStore((s) => s.clearPenalty);
-  const played = useRef(false);
-
-  useEffect(() => {
-    if (penalty && !played.current) {
-      soundEngine.play("damage");
-      played.current = true;
-    }
-    if (!penalty) played.current = false;
-  }, [penalty]);
 
   if (!penalty) return null;
 
   const hpPct = Math.min(100, (penalty.newHp / penalty.maxHp) * 100);
   const hpFill = hpPct > 60 ? "fill-hp" : hpPct > 30 ? "fill-hp-warn" : "fill-hp-danger";
 
+  // ダメージ SE はユーザーのタップ内で再生する（初回ジェスチャー前でも動く）
+  const dismiss = () => {
+    soundEngine.play("damage");
+    clearPenalty();
+  };
+
   return (
-    <div className="toast-overlay" onClick={clearPenalty}>
+    <div className="toast-overlay" onClick={dismiss}>
       <div className="toast toast-penalty" onClick={(e) => e.stopPropagation()}>
         <div className="penalty-header">
           {penalty.bossEmoji} {penalty.bossName}の攻撃！
@@ -47,7 +68,7 @@ function PenaltyToast() {
           <span className={hpFill} style={{ width: `${hpPct}%` }} />
         </div>
         <div className="hint">トレーニングすればHPが回復する！</div>
-        <button className="btn full btn-penalty-ok" style={{ marginTop: 16 }} onClick={clearPenalty}>
+        <button className="btn full btn-penalty-ok" style={{ marginTop: 16 }} onClick={dismiss}>
           わかった
         </button>
       </div>
@@ -58,23 +79,6 @@ function PenaltyToast() {
 function RewardToast() {
   const reward = useGameStore((s) => s.lastReward);
   const clear = useGameStore((s) => s.clearReward);
-  const played = useRef(false);
-
-  useEffect(() => {
-    if (reward && !played.current) {
-      if (reward.source === "quest" || reward.source === "achievement") {
-        soundEngine.play("quest");
-      } else if (reward.bossDefeated) {
-        soundEngine.play("bossDefeat");
-      } else if (reward.levelsGained > 0) {
-        soundEngine.play("levelup");
-      } else {
-        soundEngine.play("workout");
-      }
-      played.current = true;
-    }
-    if (!reward) played.current = false;
-  }, [reward]);
 
   if (!reward) return null;
   return (
@@ -114,63 +118,26 @@ function RewardToast() {
   );
 }
 
-function SoundToggle() {
-  const [seOn, setSeOn] = useState(soundEngine.seOn);
-  const [bgmOn, setBgmOn] = useState(soundEngine.bgmOn);
-  const [open, setOpen] = useState(false);
-
-  const icon = seOn || bgmOn ? "🔊" : "🔇";
-
-  return (
-    <div className="sound-toggle">
-      <button className="coin-btn sound-btn" onClick={() => setOpen((p) => !p)}>
-        {icon}
-      </button>
-      {open && (
-        <div className="sound-menu" onClick={(e) => e.stopPropagation()}>
-          <label className="sound-row">
-            <span>SE</span>
-            <input
-              type="checkbox"
-              checked={seOn}
-              onChange={(e) => {
-                soundEngine.setSEOn(e.target.checked);
-                setSeOn(e.target.checked);
-                if (e.target.checked) soundEngine.play("click");
-              }}
-            />
-          </label>
-          <label className="sound-row">
-            <span>BGM</span>
-            <input
-              type="checkbox"
-              checked={bgmOn}
-              onChange={(e) => {
-                soundEngine.setBGMOn(e.target.checked);
-                setBgmOn(e.target.checked);
-              }}
-            />
-          </label>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function App() {
   const profile = useGameStore((s) => s.profile);
   const gold = useGameStore((s) => s.avatar.gold);
   const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
   const [tab, setTab] = useState<Tab>("home");
   const [shopOpen, setShopOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useSoundEffects();
 
   useEffect(() => {
     applyDailyPenalty();
   }, [applyDailyPenalty]);
 
-  // ブラウザの自動再生制限に対応: 最初のユーザー操作でBGM開始
   useEffect(() => {
-    const start = () => soundEngine.startBGM();
+    // ブラウザの自動再生制限に対応: 最初のユーザー操作で AudioContext を起動
+    const start = () => {
+      soundEngine.warmup();   // ctx をジェスチャー内で resume しておく
+      soundEngine.startBGM();
+    };
     document.addEventListener("click", start, { once: true });
     document.addEventListener("touchstart", start, { once: true });
 
@@ -193,7 +160,9 @@ export default function App() {
       <div className="topbar">
         <span className="title">▸ {profile.name}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <SoundToggle />
+          <button className="coin-btn gear-btn" onClick={() => setSettingsOpen(true)}>
+            ⚙
+          </button>
           <button className="coin coin-btn" onClick={() => setShopOpen(true)}>
             🪙 {gold} ▸ 🏪
           </button>
@@ -225,6 +194,7 @@ export default function App() {
       </nav>
 
       {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
+      {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
       <PenaltyToast />
       <RewardToast />
     </div>
