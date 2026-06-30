@@ -170,16 +170,18 @@ export default function App() {
 
   // ブラウザの自動再生制限に対応: 最初のユーザー操作でBGM開始
   useEffect(() => {
-    const start = () => {
-      soundEngine.startBGM();
-      document.removeEventListener("click", start);
-      document.removeEventListener("touchstart", start);
-    };
+    const start = () => soundEngine.startBGM();
     document.addEventListener("click", start, { once: true });
     document.addEventListener("touchstart", start, { once: true });
+
+    // iOS PWA: バックグラウンド復帰時に AudioContext が suspend → 再開
+    const onVisibility = () => soundEngine.handleVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       document.removeEventListener("click", start);
       document.removeEventListener("touchstart", start);
+      document.removeEventListener("visibilitychange", onVisibility);
       soundEngine.stopBGM();
     };
   }, []);

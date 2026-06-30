@@ -33,8 +33,10 @@ class SoundEngine {
     this._bgmOn = localStorage.getItem("sound-bgm") !== "false";
   }
 
-  // --- AudioContext の初期化 (ユーザー操作後に呼ぶ) ---
-  private boot(): AudioContext | null {
+  // --- AudioContext の初期化と resume ---
+  // iOS Safari (PWA含む) では AudioContext は suspended で生まれる。
+  // ユーザー操作イベント内で resume() を await しないと音が出ない。
+  private bootSync(): AudioContext | null {
     if (!this.ctx) {
       try {
         const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -55,8 +57,18 @@ class SoundEngine {
         return null;
       }
     }
-    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
     return this.ctx;
+  }
+
+  // resume() を待ってから callback を実行する。
+  private withCtx(callback: (ctx: AudioContext) => void): void {
+    const ctx = this.bootSync();
+    if (!ctx) return;
+    if (ctx.state === "running") {
+      callback(ctx);
+    } else {
+      ctx.resume().then(() => callback(ctx)).catch(() => {});
+    }
   }
 
   // --- 基本波形 ---
@@ -117,8 +129,10 @@ class SoundEngine {
   // --- SE ---
   play(type: SEType): void {
     if (!this._seOn) return;
-    const ctx = this.boot();
-    if (!ctx) return;
+    this.withCtx((ctx) => this._playSE(type, ctx));
+  }
+
+  private _playSE(type: SEType, ctx: AudioContext): void {
     const se = this.seOut!;
     const t = ctx.currentTime + 0.01;
 
@@ -156,17 +170,17 @@ class SoundEngine {
 
       case "damage": {
         // 落下スイープ E4→A2
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.type = "square";
-        osc.frequency.setValueAtTime(E4, t);
-        osc.frequency.exponentialRampToValueAtTime(A2, t + 0.28);
-        g.gain.setValueAtTime(0.3, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-        osc.connect(g);
-        g.connect(se);
-        osc.start(t);
-        osc.stop(t + 0.29);
+        const dmgOsc = ctx.createOscillator();
+        const dmgG = ctx.createGain();
+        dmgOsc.type = "square";
+        dmgOsc.frequency.setValueAtTime(E4, t);
+        dmgOsc.frequency.exponentialRampToValueAtTime(A2, t + 0.28);
+        dmgG.gain.setValueAtTime(0.3, t);
+        dmgG.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+        dmgOsc.connect(dmgG);
+        dmgG.connect(se);
+        dmgOsc.start(t);
+        dmgOsc.stop(t + 0.29);
         this.noise(se, t, 0.09, 0.28);
         break;
       }
@@ -182,11 +196,13 @@ class SoundEngine {
   // --- BGM ---
   startBGM(): void {
     if (this.bgmPlaying || !this._bgmOn) return;
-    const ctx = this.boot();
-    if (!ctx) return;
     this.bgmPlaying = true;
-    this.bgmScheduledUntil = ctx.currentTime;
-    this.pump();
+    this.withCtx((ctx) => {
+      // withCtx が resolve した時点で ctx.state === "running"
+      if (!this.bgmPlaying) return;
+      this.bgmScheduledUntil = ctx.currentTime;
+      this.pump();
+    });
   }
 
   stopBGM(): void {
@@ -195,6 +211,21 @@ class SoundEngine {
       clearTimeout(this.bgmTimer);
       this.bgmTimer = null;
     }
+  }
+
+  // バックグラウンドから復帰したとき (iOS PWA で AudioContext が suspend される)
+  handleVisibilityChange(): void {
+    if (document.visibilityState !== "visible" || !this.ctx) return;
+    if (this.ctx.state !== "suspended") return;
+    this.ctx.resume().then(() => {
+      if (!this.bgmPlaying) return;
+      if (this.bgmTimer !== null) {
+        clearTimeout(this.bgmTimer);
+        this.bgmTimer = null;
+      }
+      this.bgmScheduledUntil = this.ctx!.currentTime;
+      this.pump();
+    }).catch(() => {});
   }
 
   private pump(): void {
