@@ -58,9 +58,10 @@ export interface FloatingReward {
   levelsGained: number;
   statText: string;
   modifier: number;
-  newBest?: string; // 自己ベスト更新メッセージ(ライバルは自分)
-  bossDefeated?: string; // ボス撃破名
-  expBoostUsed?: boolean; // コンディションドリンク発動
+  newBest?: string;
+  bossDefeated?: string;
+  expBoostUsed?: boolean;
+  source?: "workout" | "quest" | "achievement";
 }
 
 /** キャラメイク時の体格スナップショット(Before表示用 — 原則2) */
@@ -370,6 +371,7 @@ export const useGameStore = create<GameState>()(
             newBest,
             bossDefeated,
             expBoostUsed,
+            source: "workout",
           },
         });
       },
@@ -415,6 +417,7 @@ export const useGameStore = create<GameState>()(
             levelsGained,
             statText: "クエスト達成！",
             modifier: 1,
+            source: "quest",
           },
         });
       },
@@ -431,6 +434,7 @@ export const useGameStore = create<GameState>()(
             levelsGained: 0,
             statText: "実績解除！",
             modifier: 1,
+            source: "achievement",
           },
         });
       },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGameStore } from "./store/useGameStore";
 import { Onboarding } from "./components/Onboarding";
 import { AvatarPanel } from "./components/AvatarPanel";
@@ -7,12 +7,23 @@ import { MealScreen } from "./components/MealScreen";
 import { QuestScreen } from "./components/QuestScreen";
 import { BossScreen } from "./components/BossScreen";
 import { ShopModal } from "./components/ShopModal";
+import { soundEngine } from "./sounds/soundEngine";
 
 type Tab = "home" | "train" | "meal" | "boss" | "quest";
 
 function PenaltyToast() {
   const penalty = useGameStore((s) => s.lastPenalty);
   const clearPenalty = useGameStore((s) => s.clearPenalty);
+  const played = useRef(false);
+
+  useEffect(() => {
+    if (penalty && !played.current) {
+      soundEngine.play("damage");
+      played.current = true;
+    }
+    if (!penalty) played.current = false;
+  }, [penalty]);
+
   if (!penalty) return null;
 
   const hpPct = Math.min(100, (penalty.newHp / penalty.maxHp) * 100);
@@ -47,6 +58,24 @@ function PenaltyToast() {
 function RewardToast() {
   const reward = useGameStore((s) => s.lastReward);
   const clear = useGameStore((s) => s.clearReward);
+  const played = useRef(false);
+
+  useEffect(() => {
+    if (reward && !played.current) {
+      if (reward.source === "quest" || reward.source === "achievement") {
+        soundEngine.play("quest");
+      } else if (reward.bossDefeated) {
+        soundEngine.play("bossDefeat");
+      } else if (reward.levelsGained > 0) {
+        soundEngine.play("levelup");
+      } else {
+        soundEngine.play("workout");
+      }
+      played.current = true;
+    }
+    if (!reward) played.current = false;
+  }, [reward]);
+
   if (!reward) return null;
   return (
     <div className="toast-overlay" onClick={clear}>
@@ -85,6 +114,49 @@ function RewardToast() {
   );
 }
 
+function SoundToggle() {
+  const [seOn, setSeOn] = useState(soundEngine.seOn);
+  const [bgmOn, setBgmOn] = useState(soundEngine.bgmOn);
+  const [open, setOpen] = useState(false);
+
+  const icon = seOn || bgmOn ? "🔊" : "🔇";
+
+  return (
+    <div className="sound-toggle">
+      <button className="coin-btn sound-btn" onClick={() => setOpen((p) => !p)}>
+        {icon}
+      </button>
+      {open && (
+        <div className="sound-menu" onClick={(e) => e.stopPropagation()}>
+          <label className="sound-row">
+            <span>SE</span>
+            <input
+              type="checkbox"
+              checked={seOn}
+              onChange={(e) => {
+                soundEngine.setSEOn(e.target.checked);
+                setSeOn(e.target.checked);
+                if (e.target.checked) soundEngine.play("click");
+              }}
+            />
+          </label>
+          <label className="sound-row">
+            <span>BGM</span>
+            <input
+              type="checkbox"
+              checked={bgmOn}
+              onChange={(e) => {
+                soundEngine.setBGMOn(e.target.checked);
+                setBgmOn(e.target.checked);
+              }}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const profile = useGameStore((s) => s.profile);
   const gold = useGameStore((s) => s.avatar.gold);
@@ -96,15 +168,34 @@ export default function App() {
     applyDailyPenalty();
   }, [applyDailyPenalty]);
 
+  // ブラウザの自動再生制限に対応: 最初のユーザー操作でBGM開始
+  useEffect(() => {
+    const start = () => {
+      soundEngine.startBGM();
+      document.removeEventListener("click", start);
+      document.removeEventListener("touchstart", start);
+    };
+    document.addEventListener("click", start, { once: true });
+    document.addEventListener("touchstart", start, { once: true });
+    return () => {
+      document.removeEventListener("click", start);
+      document.removeEventListener("touchstart", start);
+      soundEngine.stopBGM();
+    };
+  }, []);
+
   if (!profile) return <Onboarding />;
 
   return (
     <div className="app">
       <div className="topbar">
         <span className="title">▸ {profile.name}</span>
-        <button className="coin coin-btn" onClick={() => setShopOpen(true)}>
-          🪙 {gold} ▸ 🏪
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <SoundToggle />
+          <button className="coin coin-btn" onClick={() => setShopOpen(true)}>
+            🪙 {gold} ▸ 🏪
+          </button>
+        </div>
       </div>
 
       {tab === "home" && <AvatarPanel />}
