@@ -132,31 +132,18 @@ export default function App() {
     applyDailyPenalty();
   }, [applyDailyPenalty]);
 
-  useEffect(() => {
-    // iOS PWA: バックグラウンド復帰時に AudioContext が suspend → 再開
-    const onVisibility = () => soundEngine.handleVisibilityChange();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      soundEngine.stopBGM();
-    };
-  }, []);
-
-  // BGM 起動: document レベルではなく React の合成イベントで処理する。
-  // iOS は document.addEventListener("touchstart") を AudioContext のジェスチャーと
-  // して認識しない場合があるが、React の onTouchStart/onClick は確実に認識される。
-  const bgmStarted = useRef(false);
-  const startBGMOnce = () => {
-    if (bgmStarted.current) return;
-    bgmStarted.current = true;
+  // SE のため AudioContext を最初のタップで起動しておく
+  const warmupDone = useRef(false);
+  const warmupOnce = () => {
+    if (warmupDone.current) return;
+    warmupDone.current = true;
     soundEngine.warmup();
-    soundEngine.startBGM();
   };
 
   if (!profile) return <Onboarding />;
 
   return (
-    <div className="app" onTouchStart={startBGMOnce} onClick={startBGMOnce}>
+    <div className="app" onTouchStart={warmupOnce} onClick={warmupOnce}>
       <div className="topbar">
         <span className="title">▸ {profile.name}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

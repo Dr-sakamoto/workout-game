@@ -4,7 +4,6 @@ import { soundEngine } from "../sounds/soundEngine";
 
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [seOn, setSeOn] = useState(soundEngine.seOn);
-  const [bgmOn, setBgmOn] = useState(soundEngine.bgmOn);
   const [confirmReset, setConfirmReset] = useState(false);
   const resetAll = useGameStore((s) => s.resetAll);
 
@@ -28,20 +27,6 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                   soundEngine.setSEOn(e.target.checked);
                   setSeOn(e.target.checked);
                   if (e.target.checked) soundEngine.play("click");
-                }}
-              />
-              <span className="toggle-track" />
-            </span>
-          </label>
-          <label className="settings-row">
-            <span>BGM</span>
-            <span className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={bgmOn}
-                onChange={(e) => {
-                  soundEngine.setBGMOn(e.target.checked);
-                  setBgmOn(e.target.checked);
                 }}
               />
               <span className="toggle-track" />
