@@ -133,30 +133,30 @@ export default function App() {
   }, [applyDailyPenalty]);
 
   useEffect(() => {
-    // ブラウザの自動再生制限に対応: 最初のユーザー操作で AudioContext を起動
-    const start = () => {
-      soundEngine.warmup();   // ctx をジェスチャー内で resume しておく
-      soundEngine.startBGM();
-    };
-    document.addEventListener("click", start, { once: true });
-    document.addEventListener("touchstart", start, { once: true });
-
     // iOS PWA: バックグラウンド復帰時に AudioContext が suspend → 再開
     const onVisibility = () => soundEngine.handleVisibilityChange();
     document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
-      document.removeEventListener("click", start);
-      document.removeEventListener("touchstart", start);
       document.removeEventListener("visibilitychange", onVisibility);
       soundEngine.stopBGM();
     };
   }, []);
 
+  // BGM 起動: document レベルではなく React の合成イベントで処理する。
+  // iOS は document.addEventListener("touchstart") を AudioContext のジェスチャーと
+  // して認識しない場合があるが、React の onTouchStart/onClick は確実に認識される。
+  const bgmStarted = useRef(false);
+  const startBGMOnce = () => {
+    if (bgmStarted.current) return;
+    bgmStarted.current = true;
+    soundEngine.warmup();
+    soundEngine.startBGM();
+  };
+
   if (!profile) return <Onboarding />;
 
   return (
-    <div className="app">
+    <div className="app" onTouchStart={startBGMOnce} onClick={startBGMOnce}>
       <div className="topbar">
         <span className="title">▸ {profile.name}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
