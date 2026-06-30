@@ -288,6 +288,15 @@ class SoundEngine {
     );
   }
 
+  // AudioContext をユーザーのジェスチャー内で起動するために事前に呼ぶ
+  warmup(): void {
+    const ctx = this.bootSync();
+    if (!ctx) return;
+    if (ctx.state !== "running") {
+      ctx.resume().catch(() => {});
+    }
+  }
+
   // --- 設定 ---
   get seOn() { return this._seOn; }
   get bgmOn() { return this._bgmOn; }
