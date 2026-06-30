@@ -571,3 +571,16 @@ input, select {
   font-family: var(--body); font-size: 14px; color: var(--muted);
   border-top: 1px dashed var(--line); padding-top: 8px;
 }
+
+/* ---- 睡眠アンケートポップアップ ---- */
+.sleep-survey-popup {
+  border-color: var(--blue);
+  border-top-color: #88ccf0;
+  border-left-color: #88ccf0;
+  width: 100%; max-width: 320px;
+}
+.sleep-survey-title {
+  color: var(--blue); font-size: 13px;
+  margin-bottom: 8px;
+  text-shadow: 0 0 8px rgba(82,170,224,0.5);
+}
