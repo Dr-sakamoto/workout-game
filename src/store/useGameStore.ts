@@ -10,7 +10,7 @@ import type {
   WorkoutLog,
   WorkoutSet,
 } from "../domain/types";
-import { createAvatar, addExp, INITIAL_STATS } from "../domain/avatar";
+import { createAvatar, addExp, INITIAL_STATS, maxHp } from "../domain/avatar";
 import { EXERCISE_MAP } from "../domain/exercises";
 import {
   computeBaseExp,
@@ -40,6 +40,16 @@ export function todayKey(d = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+export interface PenaltyInfo {
+  missedDays: number;
+  damagePerDay: number;
+  totalDamage: number;
+  bossName: string;
+  bossEmoji: string;
+  newHp: number;
+  maxHp: number;
 }
 
 export interface FloatingReward {
@@ -111,6 +121,9 @@ interface GameState {
   lastSetsByExercise: Record<string, WorkoutSet[]>; // 前回値プリフィル用
   lastMinutesByExercise: Record<string, number>;
   favorites: string[]; // お気に入り種目ID
+  playerHp: number; // 現在HP。サボると減り、トレで回復する
+  lastDailyCheckDate: string | null; // 日次ペナルティ処理済みの日付
+  lastPenalty: PenaltyInfo | null; // 表示用ペナルティ情報
 
   initProfile: (p: Profile) => void;
   setBodyFat: (n: number) => void;
@@ -122,7 +135,16 @@ interface GameState {
   claimAchievement: (id: string, rewardGold: number) => void;
   buyItem: (id: ItemEffect) => void;
   clearReward: () => void;
+  clearPenalty: () => void;
+  applyDailyPenalty: () => void;
   resetAll: () => void;
+}
+
+/** 2つの YYYY-MM-DD 日付の差(日数)を返す。bはaより後を想定。 */
+function daysBetween(from: string, to: string): number {
+  const a = new Date(from + "T00:00:00");
+  const b = new Date(to + "T00:00:00");
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
 /** ストリーク更新。シールドがあれば途切れを1回防ぐ。 */
@@ -166,6 +188,9 @@ const FRESH = {
   lastSetsByExercise: {} as Record<string, WorkoutSet[]>,
   lastMinutesByExercise: {} as Record<string, number>,
   favorites: [] as string[],
+  playerHp: maxHp(INITIAL_STATS), // 60
+  lastDailyCheckDate: null as string | null,
+  lastPenalty: null as PenaltyInfo | null,
 };
 
 export const useGameStore = create<GameState>()(
@@ -314,6 +339,11 @@ export const useGameStore = create<GameState>()(
           }
         }
 
+        // --- HPの回復: トレーニングするとHPが戻る ---
+        const newMaxHp = maxHp(avatar.stats);
+        const hpRecovery = Math.floor(earnedExp / 4);
+        const playerHp = Math.min(newMaxHp, (state.playerHp ?? newMaxHp) + hpRecovery);
+
         set({
           avatar,
           workoutLogs: [log, ...state.workoutLogs],
@@ -322,6 +352,7 @@ export const useGameStore = create<GameState>()(
           expBoostCharges,
           records: nextRecords,
           partVolumes,
+          playerHp,
           lastSetsByExercise: input.sets
             ? { ...state.lastSetsByExercise, [exerciseId]: input.sets }
             : state.lastSetsByExercise,
@@ -417,6 +448,58 @@ export const useGameStore = create<GameState>()(
       },
 
       clearReward: () => set({ lastReward: null }),
+
+      clearPenalty: () => set({ lastPenalty: null }),
+
+      applyDailyPenalty: () => {
+        const state = get();
+        const today = todayKey();
+        if (!state.profile) return;
+        if (state.lastDailyCheckDate === today) return;
+
+        const lastWorkout = state.streak.lastDate;
+        if (!lastWorkout) {
+          // まだ一度もトレーニングしていない → ペナルティなし
+          set({ lastDailyCheckDate: today });
+          return;
+        }
+
+        // 最後のトレーニング日から今日まで何日空いたか
+        // 例: lastWorkout=6/28, today=6/30 → daysSince=2, missedDays=1(6/29が空白)
+        const daysSince = daysBetween(lastWorkout, today);
+        const missedDays = Math.min(Math.max(0, daysSince - 1), 3); // 最大3日分まで
+
+        if (missedDays === 0) {
+          set({ lastDailyCheckDate: today });
+          return;
+        }
+
+        const boss = bossAt(state.boss.index);
+        const damagePerDay = boss.attackPower;
+        const currentHp = state.playerHp ?? maxHp(state.avatar.stats);
+        const mhp = maxHp(state.avatar.stats);
+        const newHp = Math.max(1, currentHp - damagePerDay * missedDays);
+        const actualDamage = currentHp - newHp;
+
+        if (actualDamage === 0) {
+          set({ lastDailyCheckDate: today });
+          return;
+        }
+
+        set({
+          playerHp: newHp,
+          lastDailyCheckDate: today,
+          lastPenalty: {
+            missedDays,
+            damagePerDay,
+            totalDamage: actualDamage,
+            bossName: boss.name,
+            bossEmoji: boss.emoji,
+            newHp,
+            maxHp: mhp,
+          },
+        });
+      },
 
       resetAll: () => set({ profile: null, ...FRESH }),
     }),

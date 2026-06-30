@@ -20,6 +20,8 @@ export function AvatarPanel() {
   const logSleep = useGameStore((s) => s.logSleep);
   const { meals, sleep } = useGameStore(selectToday);
 
+  const playerHp = useGameStore((s) => s.playerHp);
+
   const bmi = Math.round(computeBmi(profile.heightCm, profile.weightKg) * 10) / 10;
   const effFat = bodyFat ?? 2;
   const buildFront = computeBuild(profile.heightCm, profile.weightKg, partVolumes, "front", effFat);
@@ -29,7 +31,10 @@ export function AvatarPanel() {
   const condition = computeCondition(meals, profile);
   const sleepCond = computeSleepCondition(sleep?.quality ?? null);
   const expPct = Math.min(100, (avatar.expIntoLevel / avatar.expForNextLevel) * 100);
-  const hp = maxHp(avatar.stats);
+  const mhp = maxHp(avatar.stats);
+  const currentHp = Math.min(playerHp ?? mhp, mhp);
+  const hpPct = Math.min(100, (currentHp / mhp) * 100);
+  const hpFillClass = hpPct > 60 ? "fill-hp" : hpPct > 30 ? "fill-hp-warn" : "fill-hp-danger";
 
   const maxStat = Math.max(20, ...Object.values(avatar.stats));
 
@@ -80,10 +85,10 @@ export function AvatarPanel() {
 
         <div className="bar-label">
           <span>HP</span>
-          <span>{hp} / {hp}</span>
+          <span>{currentHp} / {mhp}</span>
         </div>
         <div className="bar">
-          <span className="fill-hp" style={{ width: "100%" }} />
+          <span className={hpFillClass} style={{ width: `${hpPct}%` }} />
         </div>
       </div>
 

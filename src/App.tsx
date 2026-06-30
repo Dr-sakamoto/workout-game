@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGameStore } from "./store/useGameStore";
 import { Onboarding } from "./components/Onboarding";
 import { AvatarPanel } from "./components/AvatarPanel";
@@ -9,6 +9,40 @@ import { BossScreen } from "./components/BossScreen";
 import { ShopModal } from "./components/ShopModal";
 
 type Tab = "home" | "train" | "meal" | "boss" | "quest";
+
+function PenaltyToast() {
+  const penalty = useGameStore((s) => s.lastPenalty);
+  const clearPenalty = useGameStore((s) => s.clearPenalty);
+  if (!penalty) return null;
+
+  const hpPct = Math.min(100, (penalty.newHp / penalty.maxHp) * 100);
+  const hpFill = hpPct > 60 ? "fill-hp" : hpPct > 30 ? "fill-hp-warn" : "fill-hp-danger";
+
+  return (
+    <div className="toast-overlay" onClick={clearPenalty}>
+      <div className="toast toast-penalty" onClick={(e) => e.stopPropagation()}>
+        <div className="penalty-header">
+          {penalty.bossEmoji} {penalty.bossName}の攻撃！
+        </div>
+        <div className="penalty-missed">
+          {penalty.missedDays === 1 ? "昨日サボった！" : `${penalty.missedDays}日間サボった！`}
+        </div>
+        <div className="penalty-dmg">
+          -{penalty.damagePerDay} HP × {penalty.missedDays}日
+        </div>
+        <div className="penalty-total">= -{penalty.totalDamage} HP ダメージ</div>
+        <div className="penalty-hp-label">残りHP: {penalty.newHp} / {penalty.maxHp}</div>
+        <div className="bar" style={{ margin: "6px 0 12px" }}>
+          <span className={hpFill} style={{ width: `${hpPct}%` }} />
+        </div>
+        <div className="hint">トレーニングすればHPが回復する！</div>
+        <button className="btn full btn-penalty-ok" style={{ marginTop: 16 }} onClick={clearPenalty}>
+          わかった
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function RewardToast() {
   const reward = useGameStore((s) => s.lastReward);
@@ -54,8 +88,13 @@ function RewardToast() {
 export default function App() {
   const profile = useGameStore((s) => s.profile);
   const gold = useGameStore((s) => s.avatar.gold);
+  const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
   const [tab, setTab] = useState<Tab>("home");
   const [shopOpen, setShopOpen] = useState(false);
+
+  useEffect(() => {
+    applyDailyPenalty();
+  }, [applyDailyPenalty]);
 
   if (!profile) return <Onboarding />;
 
@@ -93,6 +132,7 @@ export default function App() {
       </nav>
 
       {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
+      <PenaltyToast />
       <RewardToast />
     </div>
   );
