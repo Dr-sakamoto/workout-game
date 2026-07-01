@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useGameStore, selectToday } from "../store/useGameStore";
 import { computeCondition, sumMeals, proteinGoal, calorieGoal } from "../domain/meals";
 import type { MealSlot } from "../domain/types";
+import { BarcodeScanner } from "./BarcodeScanner";
 
 const PRESETS = [
   { name: "プロテイン", protein: 24, fat: 2, carb: 3, calories: 120, emoji: "🥤" },
@@ -48,6 +49,7 @@ export function MealScreen() {
   const [name, setName] = useState("");
   const [p, setP] = useState(""); const [f, setF] = useState("");
   const [c, setC] = useState(""); const [kcal, setKcal] = useState("");
+  const [showScanner, setShowScanner] = useState(false);
 
   // 最近食べたもの(名前で重複除去)
   const recent = useMemo(() => {
@@ -79,8 +81,20 @@ export function MealScreen() {
     setName(""); setP(""); setF(""); setC(""); setKcal("");
   };
 
+  const handleBarcodeScan = (food: { name: string; protein: number; fat: number; carb: number; calories: number }) => {
+    setShowScanner(false);
+    setName(food.name);
+    setP(String(food.protein));
+    setF(String(food.fat));
+    setC(String(food.carb));
+    setKcal(String(food.calories));
+  };
+
   return (
     <div className="screen">
+      {showScanner && (
+        <BarcodeScanner onResult={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+      )}
       <div className="panel">
         <h2>今日の栄養</h2>
         <div className="condition" style={{ marginBottom: 12 }}>
@@ -147,7 +161,16 @@ export function MealScreen() {
         </div>
 
         <h3>自分で入力</h3>
-        <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} />
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
+          <button
+            className="btn barcode-btn"
+            title="バーコードでスキャン"
+            onClick={() => setShowScanner(true)}
+          >
+            📷
+          </button>
+        </div>
         <div className="inline-inputs" style={{ marginTop: 8 }}>
           <input placeholder="P(g)" type="number" value={p} onChange={(e) => setP(e.target.value)} />
           <input placeholder="F(g)" type="number" value={f} onChange={(e) => setF(e.target.value)} />
