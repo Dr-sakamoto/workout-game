@@ -5,4 +5,3 @@ dist/
 _shot*.mjs
 tsconfig.tsbuildinfo
 _*.mjs
-.env.local

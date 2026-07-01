@@ -163,11 +163,7 @@ export function MealScreen() {
         <h3>自分で入力</h3>
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
-          <button
-            className="btn barcode-btn"
-            title="バーコードでスキャン"
-            onClick={() => setShowScanner(true)}
-          >
+          <button className="btn barcode-btn" title="バーコードでスキャン" onClick={() => setShowScanner(true)}>
             📷
           </button>
         </div>
