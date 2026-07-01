@@ -124,7 +124,9 @@ button { font-family: var(--pixel); cursor: pointer; }
   padding: 10px;
   image-rendering: pixelated;
   box-shadow: 4px 4px 0 #00000066;
+  max-width: 100%;
 }
+.pixel-avatar-frame svg { display: block; width: 100%; height: auto; }
 .avatar-name { font-size: 13px; color: var(--ink); }
 .avatar-title { font-size: 9px; color: var(--amber); letter-spacing: 1px; }
 .avatar-meta {
@@ -421,7 +423,7 @@ input, select {
 
 /* ---- 成長の記録 ---- */
 .ba-row { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.ba-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ba-col { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; flex: 1 1 0; }
 .ba-tag { font-size: 9px; color: var(--muted); }
 .ba-tag.now { color: var(--amber); }
 .ba-sub { font-family: var(--body); font-size: 13px; color: var(--muted); }
