@@ -337,14 +337,15 @@ export function PixelAvatar({
   return (
     <div
       className="pixel-avatar-frame"
-      style={aura ? { boxShadow: `0 0 0 3px ${aura}, 0 0 24px ${aura}55` } : undefined}
+      style={{
+        maxWidth: size + 24,
+        ...(aura ? { boxShadow: `0 0 0 3px ${aura}, 0 0 24px ${aura}55` } : {}),
+      }}
     >
       <svg
-        width={size}
-        height={size * (vbH / vbW)}
         viewBox={`0 0 ${vbW} ${vbH}`}
         shapeRendering="crispEdges"
-        style={{ imageRendering: "pixelated", display: "block" }}
+        style={{ imageRendering: "pixelated" }}
       >
         {runs.map((r, i) => (
           <rect key={i} x={r.x * CELL} y={r.y * CELL} width={r.w * CELL} height={CELL} fill={r.fill} />
