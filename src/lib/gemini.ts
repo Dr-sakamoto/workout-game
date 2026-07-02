@@ -1,8 +1,7 @@
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
-export interface GeminiFoodResult {
-  name: string;
+export interface GeminiNutrition {
   protein: number;
   fat: number;
   carb: number;
@@ -15,31 +14,24 @@ function imageToBase64Part(dataUrl: string) {
   return { inlineData: { mimeType, data } };
 }
 
-export async function analyzeFoodPhotos(
-  frontDataUrl: string,
-  backDataUrl: string,
-): Promise<GeminiFoodResult> {
-  const prompt = `この商品の表面と裏面の画像を見て、以下をJSONで返してください。
-- name: 商品の正式名称（パッケージに書いてある通り）
+// 栄養成分表示の写真だけを読み取る。商品名は常にコミュニティDB／
+// 正規名DB／ユーザー入力のいずれかから得るため、AIには推測させない
+// （名前をAIに任せるとユーザーごとの表記ゆれが生まれてしまう）。
+export async function analyzeNutritionLabel(backDataUrl: string): Promise<GeminiNutrition> {
+  const prompt = `この商品パッケージの栄養成分表示の画像を見て、以下をJSONで返してください。
 - protein: タンパク質(g) ※1食分または100gあたり
 - fat: 脂質(g)
 - carb: 炭水化物(g)
 - calories: カロリー(kcal)
 
 必ず純粋なJSONのみを返してください。コードブロックや説明は不要です。
-例: {"name":"カルビー ポテトチップス コンソメパンチ 60g","protein":2.1,"fat":8.3,"carb":12.4,"calories":131}`;
+例: {"protein":2.1,"fat":8.3,"carb":12.4,"calories":131}`;
 
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{
-        parts: [
-          imageToBase64Part(frontDataUrl),
-          imageToBase64Part(backDataUrl),
-          { text: prompt },
-        ],
-      }],
+      contents: [{ parts: [imageToBase64Part(backDataUrl), { text: prompt }] }],
       generationConfig: { temperature: 0 },
     }),
   });

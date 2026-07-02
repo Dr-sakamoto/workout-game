@@ -3,7 +3,8 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { lookupCommunityFood, registerCommunityFood } from "../lib/supabase";
-import { analyzeFoodPhotos } from "../lib/gemini";
+import { analyzeNutritionLabel } from "../lib/gemini";
+import { lookupCanonicalProductName } from "../lib/yahooShopping";
 
 interface FoodResult {
   name: string;
@@ -22,7 +23,7 @@ type Phase =
   | "scanning"
   | "looking-up"
   | "found"
-  | "photo-front"
+  | "name-input"
   | "photo-back"
   | "analyzing"
   | "confirm"
@@ -55,7 +56,10 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
 
   const [phase, setPhase] = useState<Phase>("scanning");
   const [barcode, setBarcode] = useState("");
-  const [frontPhoto, setFrontPhoto] = useState("");
+  // 正規名DB(JANコード)から商品名が確定済みか。確定済みなら確認画面で
+  // 編集不可にする＝ユーザー間の表記ゆれを防げる
+  const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [manualName, setManualName] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [manualCode, setManualCode] = useState("");
   const [form, setForm] = useState<FoodResult>({ name: "", protein: 0, fat: 0, carb: 0, calories: 0 });
@@ -88,6 +92,8 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
   // バーコードが取れたらコミュニティDBを参照し、無ければ撮影して登録する
   const resolveBarcode = useCallback(async (code: string) => {
     setBarcode(code);
+    setNameConfirmed(false); // 前回スキャン分の状態を持ち越さない
+    setManualName("");
     stopEverything();
     setPhase("looking-up");
 
@@ -103,8 +109,19 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
       /* DB接続失敗時も撮影フローへフォールバック */
     }
 
-    // 未登録なら撮影 → AI解析 → コミュニティDBに登録（次回以降は誰でも即参照できる）
-    setPhase("photo-front");
+    // 未登録の場合、まずJANコードから正規の商品名を取得する。
+    // ここで名前を確定できれば、ユーザーごとにAIが商品名を推測して
+    // 表記ゆれが生まれる事態を避けられる（栄養成分の撮影だけで済む）
+    const canonicalName = await lookupCanonicalProductName(code);
+    if (canonicalName) {
+      setForm((f) => ({ ...f, name: canonicalName }));
+      setNameConfirmed(true);
+      setPhase("photo-back");
+      return;
+    }
+
+    // 正規名も取れない場合は、AIに推測させず自分で商品名を入力してもらう
+    setPhase("name-input");
   }, [stopEverything]);
 
   // バーコードスキャン（背面カメラ・商品フォーマット限定）
@@ -157,7 +174,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
 
   // 撮影フェーズでカメラ起動
   useEffect(() => {
-    if (phase !== "photo-front" && phase !== "photo-back") return;
+    if (phase !== "photo-back") return;
     let cancelled = false;
     (async () => {
       try {
@@ -193,18 +210,15 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
     return canvas.toDataURL("image/jpeg", 0.85);
   }, []);
 
-  const handleFrontShot = () => {
-    setFrontPhoto(takePhoto());
-    setPhase("photo-back"); // ストリームは維持したまま裏面へ
-  };
-
   const handleBackShot = async () => {
     const backPhoto = takePhoto();
     stopEverything();
     setPhase("analyzing");
     try {
-      const result = await analyzeFoodPhotos(frontPhoto, backPhoto);
-      setForm(result);
+      // 商品名はこの時点で既に確定済み（コミュニティDB／正規名DB／手入力の
+      // いずれか）。AIには栄養成分だけを読み取らせる
+      const nutrition = await analyzeNutritionLabel(backPhoto);
+      setForm((f) => ({ ...f, ...nutrition }));
       setPhase("confirm");
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -290,22 +304,46 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
           </>
         )}
 
-        {/* ③ 表面撮影 */}
-        {phase === "photo-front" && (
+        {/* ③ 商品名を入力（DBに無い場合のみ・AIには推測させない） */}
+        {phase === "name-input" && (
           <>
-            <h3>📷 商品の表を撮影</h3>
-            <p className="barcode-hint">データベースに未登録です。商品名を読み取ります。</p>
-            <div className="video-wrap">
-              <video ref={photoVideoRef} className="barcode-video" autoPlay playsInline muted />
-            </div>
-            <button className="btn full" onClick={handleFrontShot}>撮影</button>
+            <h3>商品名を入力</h3>
+            <p className="barcode-hint">商品名が見つかりませんでした。入力してください。</p>
+            <input
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              placeholder="商品名"
+              style={{ marginBottom: 12 }}
+            />
+            <button
+              className="btn full"
+              disabled={!manualName.trim()}
+              onClick={() => {
+                setForm((f) => ({ ...f, name: manualName.trim() }));
+                setPhase("photo-back");
+              }}
+            >
+              次へ：栄養成分表示を撮影
+            </button>
+            <button
+              className="btn secondary full"
+              style={{ marginTop: 8 }}
+              disabled={!manualName.trim()}
+              onClick={() => {
+                setForm((f) => ({ ...f, name: manualName.trim() }));
+                setPhase("confirm");
+              }}
+            >
+              数値も自分で入力する
+            </button>
           </>
         )}
 
-        {/* ④ 裏面撮影 */}
+        {/* ④ 栄養成分表示を撮影（商品名は確定済み） */}
         {phase === "photo-back" && (
           <>
             <h3>📷 栄養成分表示を撮影</h3>
+            <div className="found-badge">🏷️ {form.name}</div>
             <p className="barcode-hint">パッケージ裏の栄養成分表示を写してください</p>
             <div className="video-wrap">
               <video ref={photoVideoRef} className="barcode-video" autoPlay playsInline muted />
@@ -326,13 +364,23 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
         {phase === "confirm" && (
           <>
             <h3>内容を確認</h3>
-            <p className="barcode-hint">修正してからコミュニティに登録できます</p>
+            <p className="barcode-hint">
+              {nameConfirmed
+                ? "栄養成分を確認してからコミュニティに登録できます"
+                : "修正してからコミュニティに登録できます"}
+            </p>
             <input
               value={form.name}
               onChange={(e) => setField("name", e.target.value)}
               placeholder="商品名"
-              style={{ marginBottom: 8 }}
+              readOnly={nameConfirmed}
+              style={{ marginBottom: nameConfirmed ? 4 : 8, opacity: nameConfirmed ? 0.75 : 1 }}
             />
+            {nameConfirmed && (
+              <p className="barcode-hint" style={{ marginBottom: 8 }}>
+                ※ 正規の商品名のため編集できません（表記ゆれ防止）
+              </p>
+            )}
             <div className="inline-inputs">
               <input type="number" placeholder="P(g)" value={form.protein} onChange={(e) => setField("protein", e.target.value)} />
               <input type="number" placeholder="F(g)" value={form.fat} onChange={(e) => setField("fat", e.target.value)} />

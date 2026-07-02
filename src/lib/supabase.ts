@@ -24,7 +24,15 @@ export async function lookupCommunityFood(barcode: string): Promise<CommunityFoo
   return data ?? null;
 }
 
+// 誰でも上書き登録できる Wikipedia 的な共有DB。表記ゆれを完全には防げない
+// ので、せめて空白まわりだけは投稿のたびに正規化しておく。
+function normalizeName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
 export async function registerCommunityFood(food: CommunityFood): Promise<void> {
   if (!supabase) return;
-  await supabase.from("community_foods").upsert(food, { onConflict: "barcode" });
+  await supabase
+    .from("community_foods")
+    .upsert({ ...food, name: normalizeName(food.name) }, { onConflict: "barcode" });
 }
