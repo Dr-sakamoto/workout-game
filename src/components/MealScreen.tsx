@@ -4,16 +4,9 @@ import { computeCondition, sumMeals, proteinGoal, calorieGoal } from "../domain/
 import type { MealSlot } from "../domain/types";
 import { BarcodeScanner } from "./BarcodeScanner";
 
-const PRESETS = [
-  { name: "プロテイン", protein: 24, fat: 2, carb: 3, calories: 120, emoji: "🥤" },
-  { name: "鶏むね肉 100g", protein: 23, fat: 2, carb: 0, calories: 110, emoji: "🍗" },
-  { name: "卵 1個", protein: 6, fat: 5, carb: 0, calories: 75, emoji: "🥚" },
-  { name: "白米 茶碗1杯", protein: 4, fat: 0, carb: 55, calories: 250, emoji: "🍚" },
-  { name: "サラダ", protein: 2, fat: 3, carb: 6, calories: 60, emoji: "🥗" },
-  { name: "牛丼", protein: 20, fat: 25, carb: 90, calories: 700, emoji: "🍱" },
-  { name: "バナナ", protein: 1, fat: 0, carb: 23, calories: 90, emoji: "🍌" },
-  { name: "ヨーグルト", protein: 10, fat: 3, carb: 12, calories: 110, emoji: "🥣" },
-];
+// 「よく食べる物」に出すための最低記録回数。固定プリセットは置かず、
+// 本人の履歴が育ってから初めて意味のある提案をする。
+const FREQUENT_MIN_COUNT = 3;
 
 const SLOTS: { id: MealSlot; label: string; emoji: string }[] = [
   { id: "morning", label: "朝", emoji: "🌅" },
@@ -62,10 +55,24 @@ export function MealScreen() {
     return out;
   }, [allMeals]);
 
-  // 検索: プリセット＋最近 を名前で絞り込み
+  // よく食べる物: 履歴の記録回数から動的に算出する（固定プリセットは持たない）
+  const frequent = useMemo(() => {
+    const counts = new Map<string, { count: number; sample: (typeof allMeals)[number] }>();
+    for (const m of allMeals) {
+      const cur = counts.get(m.name);
+      if (cur) cur.count++;
+      else counts.set(m.name, { count: 1, sample: m });
+    }
+    return [...counts.values()]
+      .filter((v) => v.count >= FREQUENT_MIN_COUNT)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [allMeals]);
+
+  // 検索: 最近＋よく食べる物 を名前で絞り込み
   const q = search.trim();
-  const shownPresets = q ? PRESETS.filter((x) => x.name.includes(q)) : PRESETS;
   const shownRecent = q ? recent.filter((x) => x.name.includes(q)) : recent;
+  const shownFrequent = q ? frequent.filter((v) => v.sample.name.includes(q)) : frequent;
 
   const totals = sumMeals(meals);
   const condition = computeCondition(meals, profile);
@@ -134,6 +141,18 @@ export function MealScreen() {
           </div>
         </div>
 
+        {/* いちばん使う導線: バーコードスキャン */}
+        <button className="scan-cta" onClick={() => setShowScanner(true)}>
+          <span className="scan-cta-ico">📷</span>
+          <span className="scan-cta-text">
+            <span className="scan-cta-title">バーコードをスキャン</span>
+            <span className="scan-cta-sub">商品のPFC・カロリーを自動入力</span>
+          </span>
+          <span className="scan-cta-arrow">›</span>
+        </button>
+
+        <div className="or-divider"><span>または</span></div>
+
         <input className="search" placeholder="🔍 食べ物を検索" value={search} onChange={(e) => setSearch(e.target.value)} />
 
         {shownRecent.length > 0 && (
@@ -150,23 +169,23 @@ export function MealScreen() {
           </>
         )}
 
-        <h3>よく食べる物</h3>
-        <div className="chip-grid">
-          {shownPresets.map((m) => (
-            <button key={m.name} className="chip" onClick={() => add(m)}>
-              <span className="emoji">{m.emoji}</span>
-              <span className="chip-name">{m.name}</span>
-            </button>
-          ))}
-        </div>
+        {shownFrequent.length > 0 && (
+          <>
+            <h3>よく食べる物</h3>
+            <div className="chip-grid">
+              {shownFrequent.map(({ sample: m, count }) => (
+                <button key={m.name} className="chip" onClick={() => add(m)}>
+                  <span className="emoji">🍽️</span>
+                  <span className="chip-name">{m.name}</span>
+                  <span className="chip-count">×{count}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
-        <h3>自分で入力</h3>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn barcode-btn" title="バーコードでスキャン" onClick={() => setShowScanner(true)}>
-            📷
-          </button>
-        </div>
+        <h3>自分で一から入力</h3>
+        <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 8 }} />
         <div className="inline-inputs" style={{ marginTop: 8 }}>
           <input placeholder="P(g)" type="number" value={p} onChange={(e) => setP(e.target.value)} />
           <input placeholder="F(g)" type="number" value={f} onChange={(e) => setF(e.target.value)} />

@@ -3,7 +3,8 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { lookupCommunityFood, registerCommunityFood } from "../lib/supabase";
-import { analyzeFoodPhotos } from "../lib/gemini";
+import { analyzeFoodPhotos, analyzeNutritionLabel } from "../lib/gemini";
+import { lookupCanonicalProductName } from "../lib/yahooShopping";
 
 interface FoodResult {
   name: string;
@@ -56,6 +57,9 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("scanning");
   const [barcode, setBarcode] = useState("");
   const [frontPhoto, setFrontPhoto] = useState("");
+  // 正規名DB(JANコード)から商品名が確定済みか。確定済みならAIに名前を
+  // 推測させず栄養成分だけ読み取る＝ユーザー間の表記ゆれを防げる
+  const [nameConfirmed, setNameConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [manualCode, setManualCode] = useState("");
   const [form, setForm] = useState<FoodResult>({ name: "", protein: 0, fat: 0, carb: 0, calories: 0 });
@@ -88,6 +92,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
   // バーコードが取れたらコミュニティDBを参照し、無ければ撮影して登録する
   const resolveBarcode = useCallback(async (code: string) => {
     setBarcode(code);
+    setNameConfirmed(false); // 前回スキャン分の状態を持ち越さない
     stopEverything();
     setPhase("looking-up");
 
@@ -103,7 +108,19 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
       /* DB接続失敗時も撮影フローへフォールバック */
     }
 
-    // 未登録なら撮影 → AI解析 → コミュニティDBに登録（次回以降は誰でも即参照できる）
+    // 未登録の場合、まずJANコードから正規の商品名を取得する。
+    // ここで名前を確定できれば、ユーザーごとにAIが商品名を推測して
+    // 表記ゆれが生まれる事態を避けられる（栄養成分の撮影だけで済む）
+    const canonicalName = await lookupCanonicalProductName(code);
+    if (canonicalName) {
+      setForm((f) => ({ ...f, name: canonicalName }));
+      setNameConfirmed(true);
+      setPhase("photo-back");
+      return;
+    }
+
+    // 正規名も取れない場合のみ、表面撮影でAIに名前を読み取らせる
+    setNameConfirmed(false);
     setPhase("photo-front");
   }, [stopEverything]);
 
@@ -203,8 +220,14 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
     stopEverything();
     setPhase("analyzing");
     try {
-      const result = await analyzeFoodPhotos(frontPhoto, backPhoto);
-      setForm(result);
+      if (nameConfirmed) {
+        // 商品名は既に確定済みなので、栄養成分だけをAIに読み取らせる
+        const nutrition = await analyzeNutritionLabel(backPhoto);
+        setForm((f) => ({ ...f, ...nutrition }));
+      } else {
+        const result = await analyzeFoodPhotos(frontPhoto, backPhoto);
+        setForm(result);
+      }
       setPhase("confirm");
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -294,7 +317,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
         {phase === "photo-front" && (
           <>
             <h3>📷 商品の表を撮影</h3>
-            <p className="barcode-hint">データベースに未登録です。商品名を読み取ります。</p>
+            <p className="barcode-hint">商品名が見つかりませんでした。表面から読み取ります。</p>
             <div className="video-wrap">
               <video ref={photoVideoRef} className="barcode-video" autoPlay playsInline muted />
             </div>
@@ -306,6 +329,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
         {phase === "photo-back" && (
           <>
             <h3>📷 栄養成分表示を撮影</h3>
+            {nameConfirmed && <div className="found-badge">🏷️ {form.name}</div>}
             <p className="barcode-hint">パッケージ裏の栄養成分表示を写してください</p>
             <div className="video-wrap">
               <video ref={photoVideoRef} className="barcode-video" autoPlay playsInline muted />
@@ -326,13 +350,23 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
         {phase === "confirm" && (
           <>
             <h3>内容を確認</h3>
-            <p className="barcode-hint">修正してからコミュニティに登録できます</p>
+            <p className="barcode-hint">
+              {nameConfirmed
+                ? "栄養成分を確認してからコミュニティに登録できます"
+                : "修正してからコミュニティに登録できます"}
+            </p>
             <input
               value={form.name}
               onChange={(e) => setField("name", e.target.value)}
               placeholder="商品名"
-              style={{ marginBottom: 8 }}
+              readOnly={nameConfirmed}
+              style={{ marginBottom: nameConfirmed ? 4 : 8, opacity: nameConfirmed ? 0.75 : 1 }}
             />
+            {nameConfirmed && (
+              <p className="barcode-hint" style={{ marginBottom: 8 }}>
+                ※ 正規の商品名のため編集できません（表記ゆれ防止）
+              </p>
+            )}
             <div className="inline-inputs">
               <input type="number" placeholder="P(g)" value={form.protein} onChange={(e) => setField("protein", e.target.value)} />
               <input type="number" placeholder="F(g)" value={form.fat} onChange={(e) => setField("fat", e.target.value)} />
