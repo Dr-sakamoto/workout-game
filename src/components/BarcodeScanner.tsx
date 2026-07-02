@@ -3,7 +3,6 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { lookupCommunityFood, registerCommunityFood } from "../lib/supabase";
-import { lookupOpenFoodFacts } from "../lib/openfoodfacts";
 import { analyzeFoodPhotos } from "../lib/gemini";
 
 interface FoodResult {
@@ -56,7 +55,6 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
 
   const [phase, setPhase] = useState<Phase>("scanning");
   const [barcode, setBarcode] = useState("");
-  const [source, setSource] = useState<"community" | "openfoodfacts" | "photo" | "">("");
   const [frontPhoto, setFrontPhoto] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [manualCode, setManualCode] = useState("");
@@ -87,36 +85,25 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
   // アンマウント時にも必ずカメラを解放
   useEffect(() => stopEverything, [stopEverything]);
 
-  // バーコードが取れたら DB → Open Food Facts → 撮影 の順に解決
+  // バーコードが取れたらコミュニティDBを参照し、無ければ撮影して登録する
   const resolveBarcode = useCallback(async (code: string) => {
     setBarcode(code);
     stopEverything();
     setPhase("looking-up");
 
-    // ① コミュニティDB（登録済みなら 1食分の正確な値）
+    // 誰かが初回登録済みなら、その値をそのまま使える（ユーザー共有DB）
     try {
       const found = await lookupCommunityFood(code);
       if (found) {
         setForm(found);
-        setSource("community");
         setPhase("found");
         return;
       }
     } catch {
-      /* フォールバックへ */
+      /* DB接続失敗時も撮影フローへフォールバック */
     }
 
-    // ② Open Food Facts（世界の商品DB・100gあたり）
-    const off = await lookupOpenFoodFacts(code);
-    if (off) {
-      setForm({ name: off.name, protein: off.protein, fat: off.fat, carb: off.carb, calories: off.calories });
-      setSource("openfoodfacts");
-      setPhase("found");
-      return;
-    }
-
-    // ③ どちらにも無ければ写真から解析
-    setSource("photo");
+    // 未登録なら撮影 → AI解析 → コミュニティDBに登録（次回以降は誰でも即参照できる）
     setPhase("photo-front");
   }, [stopEverything]);
 
@@ -218,7 +205,6 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
     try {
       const result = await analyzeFoodPhotos(frontPhoto, backPhoto);
       setForm(result);
-      setSource("photo");
       setPhase("confirm");
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -284,12 +270,10 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
           </div>
         )}
 
-        {/* ② 見つかった（DB / Open Food Facts） */}
+        {/* ② コミュニティDBで発見 */}
         {phase === "found" && (
           <>
-            <div className="found-badge">
-              {source === "community" ? "✅ コミュニティDBで発見" : "🌍 Open Food Facts で発見"}
-            </div>
+            <div className="found-badge">✅ コミュニティDBで発見</div>
             <div className="found-card">
               <div className="found-name">{form.name}</div>
               <div className="found-pfc">
@@ -298,7 +282,6 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
                 <span><b>C</b>{form.carb}<small>g</small></span>
                 <span className="kcal">{form.calories}<small>kcal</small></span>
               </div>
-              {source === "openfoodfacts" && <div className="found-note">※ 100gあたりの値です</div>}
             </div>
             <button className="btn full" onClick={() => onResult(form)}>この食品を記録</button>
             <button className="btn secondary full" style={{ marginTop: 8 }} onClick={() => setPhase("confirm")}>
