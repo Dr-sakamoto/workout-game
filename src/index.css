@@ -705,10 +705,6 @@ input, select {
 .found-pfc b { color: var(--amber); font-family: var(--pixel); font-size: 9px; margin-right: 3px; }
 .found-pfc small { color: var(--muted); font-size: 12px; margin-left: 1px; }
 .found-pfc .kcal { color: var(--green); }
-.found-note {
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  margin-top: 10px; text-align: right;
-}
 
 .barcode-error {
   text-align: center; padding: 12px 4px;
