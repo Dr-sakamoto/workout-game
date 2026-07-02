@@ -316,6 +316,7 @@ input, select {
   padding: 10px; margin-bottom: 10px;
 }
 .chip-name { flex: 1; text-align: left; }
+.chip-count { font-family: var(--body); font-size: 12px; color: var(--muted); }
 .star {
   background: transparent; border: none; color: #4a3a28; font-size: 15px;
   padding: 0 2px; line-height: 1;
@@ -353,6 +354,36 @@ input, select {
   color: var(--muted); font-size: 9px; padding: 6px 8px;
 }
 .cat-tab.active { border-color: var(--amber); color: var(--amber); background: #2e2110; }
+
+/* ---- バーコードスキャンCTA（食事記録の一番の導線） ---- */
+.scan-cta {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%;
+  background: linear-gradient(180deg, #fac842 0%, var(--amber-d) 100%);
+  color: #1e1002;
+  border: 2px solid #140c00;
+  border-bottom-color: #0a0600;
+  border-right-color: #0a0600;
+  box-shadow: 3px 3px 0 #00000088;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  text-align: left;
+}
+.scan-cta:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #00000088; }
+.scan-cta-ico { font-size: 26px; line-height: 1; }
+.scan-cta-text { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.scan-cta-title { font-size: 11px; letter-spacing: 0.5px; }
+.scan-cta-sub { font-family: var(--body); font-size: 13px; color: #4a2e00; }
+.scan-cta-arrow { font-size: 20px; opacity: 0.6; }
+
+.or-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+  font-family: var(--body); font-size: 13px; color: var(--muted);
+}
+.or-divider::before, .or-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
 
 /* ---- クエスト ---- */
 .quest { border: 2px solid var(--line); background: var(--panel-2); padding: 12px; margin-bottom: 10px; }
