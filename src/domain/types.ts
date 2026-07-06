@@ -62,6 +62,8 @@ export interface MealLog {
   slot?: MealSlot;
   /** かんたん記録などの概算値か(表示に「約」を付ける) */
   estimated?: boolean;
+  /** バーコードスキャン由来の記録。修正時にコミュニティDBへ反映できる */
+  barcode?: string;
 }
 
 export type SleepQuality = "good" | "normal" | "poor";

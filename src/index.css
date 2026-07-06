@@ -398,6 +398,23 @@ input, select {
 }
 .adv-input summary:hover { color: var(--fg); }
 
+/* ---- 食事記録の修正・削除 ---- */
+.log-item-btn {
+  width: 100%;
+  background: none; border: none; border-bottom: 1px dashed var(--line);
+  color: inherit; text-align: left; cursor: pointer;
+}
+.log-item-btn:active { background: var(--panel-2); }
+.edit-ico { font-size: 11px; margin-left: 6px; opacity: 0.55; }
+.fix-community {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 12px;
+  font-family: var(--body); font-size: 13px; color: var(--muted);
+  cursor: pointer;
+}
+.fix-community input { width: auto; margin-top: 2px; }
+.btn-danger { color: #e05252; border-color: #6b2323; }
+
 /* ---- クエスト ---- */
 .quest { border: 2px solid var(--line); background: var(--panel-2); padding: 12px; margin-bottom: 10px; }
 .quest .qhead { display: flex; justify-content: space-between; font-size: 9px; }

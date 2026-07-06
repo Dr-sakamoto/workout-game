@@ -131,6 +131,8 @@ interface GameState {
   toggleFavorite: (exerciseId: string) => void;
   logWorkout: (exerciseId: string, input: { sets?: WorkoutSet[]; minutes?: number }) => void;
   logMeal: (meal: Omit<MealLog, "id" | "date">) => void;
+  updateMeal: (id: string, patch: Partial<Omit<MealLog, "id" | "date">>) => void;
+  deleteMeal: (id: string) => void;
   logSleep: (quality: SleepQuality) => void;
   claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
   claimAchievement: (id: string, rewardGold: number) => void;
@@ -395,6 +397,16 @@ export const useGameStore = create<GameState>()(
         };
         set({ mealLogs: [log, ...state.mealLogs] });
       },
+
+      // 食事の修正・削除。コンディションはワークアウト記録時に都度計算される
+      // ため、過去に獲得したEXPへの遡及はない(修正はその後の補正にのみ効く)。
+      updateMeal: (id, patch) =>
+        set((s) => ({
+          mealLogs: s.mealLogs.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+        })),
+
+      deleteMeal: (id) =>
+        set((s) => ({ mealLogs: s.mealLogs.filter((m) => m.id !== id) })),
 
       claimQuest: (questId, rewardExp, rewardGold) => {
         const state = get();

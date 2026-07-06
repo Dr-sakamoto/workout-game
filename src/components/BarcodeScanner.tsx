@@ -5,6 +5,7 @@ import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { lookupCommunityFood, registerCommunityFood } from "../lib/supabase";
 import { analyzeNutritionLabel } from "../lib/gemini";
 import { lookupCanonicalProductName } from "../lib/yahooShopping";
+import { lookupOpenFoodFactsName } from "../lib/openFoodFacts";
 
 interface FoodResult {
   name: string;
@@ -12,6 +13,8 @@ interface FoodResult {
   fat: number;
   carb: number;
   calories: number;
+  /** スキャン/手入力されたバーコード。記録に紐付けて後から修正できるようにする */
+  barcode?: string;
 }
 
 interface Props {
@@ -111,8 +114,11 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
 
     // 未登録の場合、まずJANコードから正規の商品名を取得する。
     // ここで名前を確定できれば、ユーザーごとにAIが商品名を推測して
-    // 表記ゆれが生まれる事態を避けられる（栄養成分の撮影だけで済む）
-    const canonicalName = await lookupCanonicalProductName(code);
+    // 表記ゆれが生まれる事態を避けられる（栄養成分の撮影だけで済む）。
+    // Yahoo(要APIキー・サーバー経由)が未設定/未ヒットでも、Open Food Facts
+    // (キー不要の共有食品DB)をフォールバックにして命中率を上げる
+    const canonicalName =
+      (await lookupCanonicalProductName(code)) ?? (await lookupOpenFoodFactsName(code));
     if (canonicalName) {
       setForm((f) => ({ ...f, name: canonicalName }));
       setNameConfirmed(true);
@@ -229,12 +235,12 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
   const handleRegister = async () => {
     if (barcode) {
       try {
-        await registerCommunityFood({ barcode, ...form });
+        await registerCommunityFood({ ...form, barcode });
       } catch {
         /* 登録失敗しても記録は続行 */
       }
     }
-    onResult(form);
+    onResult({ ...form, barcode: barcode || undefined });
   };
 
   const setField = (k: keyof FoodResult, v: string) =>
@@ -297,9 +303,9 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
                 <span className="kcal">{form.calories}<small>kcal</small></span>
               </div>
             </div>
-            <button className="btn full" onClick={() => onResult(form)}>この食品を記録</button>
+            <button className="btn full" onClick={() => onResult({ ...form, barcode })}>この食品を記録</button>
             <button className="btn secondary full" style={{ marginTop: 8 }} onClick={() => setPhase("confirm")}>
-              数値を修正する
+              間違いがある？ 修正する
             </button>
           </>
         )}
@@ -391,7 +397,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
               {barcode ? "コミュニティに登録して記録" : "この内容で記録"}
             </button>
             {barcode && (
-              <button className="btn secondary full" style={{ marginTop: 8 }} onClick={() => onResult(form)}>
+              <button className="btn secondary full" style={{ marginTop: 8 }} onClick={() => onResult({ ...form, barcode })}>
                 登録せずに記録だけする
               </button>
             )}
