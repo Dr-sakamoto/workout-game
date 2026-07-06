@@ -60,6 +60,8 @@ export interface MealLog {
   carb: number; // g
   calories: number;
   slot?: MealSlot;
+  /** かんたん記録などの概算値か(表示に「約」を付ける) */
+  estimated?: boolean;
 }
 
 export type SleepQuality = "good" | "normal" | "poor";

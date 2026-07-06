@@ -3,6 +3,7 @@ import { computeStrengthExp, computeCardioExp, computeGold } from "./expEngine";
 import { addExp, createAvatar, expForLevel } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
 import { computeCondition } from "./meals";
+import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
 import { INITIAL_STATS } from "./avatar";
 import { EXERCISE_MAP } from "./exercises";
 import { bossAt, BOSSES } from "./bosses";
@@ -98,6 +99,38 @@ describe("meal condition", () => {
   it("栄養不足はデバフになる", () => {
     const c = computeCondition([meal(10, 300)], profile);
     expect(c.expModifier).toBeLessThan(1);
+  });
+});
+
+describe("simple meal (かんたん記録の推定)", () => {
+  it("PFCの合計エネルギーが表示カロリーとおおむね一致する", () => {
+    for (const p of PROTEIN_LEVELS) {
+      for (const s of MEAL_SIZES) {
+        const e = estimateSimpleMeal(p.id, s.id);
+        const energy = e.protein * 4 + e.fat * 9 + e.carb * 4;
+        // 丸め誤差ぶんだけ許容
+        expect(Math.abs(energy - e.calories)).toBeLessThanOrEqual(10);
+      }
+    }
+  });
+
+  it("タンパク質しっかり×3食で初心者の目標に近づく(習慣化ループが回る)", () => {
+    // 体重60kgの目標 = 96g。しっかり30g×3食+間食で概ね達成圏
+    const e = estimateSimpleMeal("solid", "normal");
+    expect(e.protein * 3).toBeGreaterThanOrEqual(85);
+  });
+
+  it("量感の選択がカロリーの大小に単調に反映される", () => {
+    const big = estimateSimpleMeal("some", "big");
+    const normal = estimateSimpleMeal("some", "normal");
+    const light = estimateSimpleMeal("some", "light");
+    expect(big.calories).toBeGreaterThan(normal.calories);
+    expect(normal.calories).toBeGreaterThan(light.calories);
+  });
+
+  it("自動ラベルは選択内容が分かる名前になる", () => {
+    expect(simpleMealName("solid", "normal")).toContain("しっかり");
+    expect(simpleMealName("none", "light")).toContain("軽め");
   });
 });
 

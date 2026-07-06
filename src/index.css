@@ -385,6 +385,19 @@ input, select {
   content: ""; flex: 1; height: 1px; background: var(--line);
 }
 
+/* ---- かんたん記録（バーコードのない自炊・外食） ---- */
+.simple-q {
+  font-family: var(--body); font-size: 14px; font-weight: 700;
+  margin-bottom: 6px;
+}
+.simple-hint { font-size: 12px; margin: -6px 0 10px; }
+.adv-input { margin-top: 14px; }
+.adv-input summary {
+  font-family: var(--body); font-size: 13px; color: var(--muted);
+  cursor: pointer; user-select: none; padding: 4px 0;
+}
+.adv-input summary:hover { color: var(--fg); }
+
 /* ---- クエスト ---- */
 .quest { border: 2px solid var(--line); background: var(--panel-2); padding: 12px; margin-bottom: 10px; }
 .quest .qhead { display: flex; justify-content: space-between; font-size: 9px; }

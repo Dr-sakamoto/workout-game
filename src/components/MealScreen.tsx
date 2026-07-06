@@ -2,6 +2,14 @@ import { useMemo, useState } from "react";
 import { useGameStore, selectToday } from "../store/useGameStore";
 import { computeCondition, sumMeals, proteinGoal, calorieGoal } from "../domain/meals";
 import type { MealSlot } from "../domain/types";
+import {
+  PROTEIN_LEVELS,
+  MEAL_SIZES,
+  estimateSimpleMeal,
+  simpleMealName,
+  type ProteinLevel,
+  type MealSize,
+} from "../domain/simpleMeal";
 import { BarcodeScanner } from "./BarcodeScanner";
 
 // 「よく食べる物」に出すための最低記録回数。固定プリセットは置かず、
@@ -44,6 +52,11 @@ export function MealScreen() {
   const [c, setC] = useState(""); const [kcal, setKcal] = useState("");
   const [showScanner, setShowScanner] = useState(false);
 
+  // かんたん記録(バーコードのない自炊・外食向け)
+  const [simpleName, setSimpleName] = useState("");
+  const [proteinLevel, setProteinLevel] = useState<ProteinLevel>("some");
+  const [mealSize, setMealSize] = useState<MealSize>("normal");
+
   // 最近食べたもの(名前で重複除去)
   const recent = useMemo(() => {
     const out: typeof allMeals = []; const seen = new Set<string>();
@@ -79,8 +92,18 @@ export function MealScreen() {
   const pGoal = proteinGoal(profile.weightKg);
   const cGoal = calorieGoal(profile);
 
-  const add = (m: { name: string; protein: number; fat: number; carb: number; calories: number }) =>
-    logMeal({ name: qty === 1 ? m.name : `${m.name}×${qty}`, ...scale(m, qty), slot });
+  const add = (m: { name: string; protein: number; fat: number; carb: number; calories: number; estimated?: boolean }) =>
+    logMeal({ name: qty === 1 ? m.name : `${m.name}×${qty}`, ...scale(m, qty), slot, estimated: m.estimated });
+
+  const simpleEstimate = estimateSimpleMeal(proteinLevel, mealSize);
+  const addSimple = () => {
+    add({
+      name: simpleName.trim() || simpleMealName(proteinLevel, mealSize),
+      ...simpleEstimate,
+      estimated: true,
+    });
+    setSimpleName("");
+  };
 
   const addCustom = () => {
     if (!name.trim()) return;
@@ -141,19 +164,64 @@ export function MealScreen() {
           </div>
         </div>
 
-        {/* いちばん使う導線: バーコードスキャン */}
+        {/* パッケージ商品: バーコードスキャン */}
         <button className="scan-cta" onClick={() => setShowScanner(true)}>
           <span className="scan-cta-ico">📷</span>
           <span className="scan-cta-text">
             <span className="scan-cta-title">バーコードをスキャン</span>
-            <span className="scan-cta-sub">商品のPFC・カロリーを自動入力</span>
+            <span className="scan-cta-sub">パッケージ商品はPFC・カロリーを自動入力</span>
           </span>
           <span className="scan-cta-arrow">›</span>
         </button>
 
         <div className="or-divider"><span>または</span></div>
 
-        <input className="search" placeholder="🔍 食べ物を検索" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <h3>🍚 自炊・外食をかんたん記録</h3>
+        <p className="hint" style={{ marginBottom: 8 }}>
+          バーコードがなくてもOK。2つ選ぶだけで目安を記録します。
+        </p>
+        <input
+          placeholder="メニュー名（なくてもOK）"
+          value={simpleName}
+          onChange={(e) => setSimpleName(e.target.value)}
+          style={{ marginBottom: 10 }}
+        />
+        <div className="simple-q">肉・魚・卵・大豆・プロテインは？</div>
+        <div className="cat-tabs">
+          {PROTEIN_LEVELS.map((o) => (
+            <button
+              key={o.id}
+              className={`cat-tab ${proteinLevel === o.id ? "active" : ""}`}
+              onClick={() => setProteinLevel(o.id)}
+            >
+              {o.emoji}{o.label}
+            </button>
+          ))}
+        </div>
+        <p className="hint simple-hint">目安: {PROTEIN_LEVELS.find((o) => o.id === proteinLevel)!.hint}</p>
+        <div className="simple-q">全体の量は？</div>
+        <div className="cat-tabs">
+          {MEAL_SIZES.map((o) => (
+            <button
+              key={o.id}
+              className={`cat-tab ${mealSize === o.id ? "active" : ""}`}
+              onClick={() => setMealSize(o.id)}
+            >
+              {o.emoji}{o.label}
+            </button>
+          ))}
+        </div>
+        <p className="hint simple-hint">目安: {MEAL_SIZES.find((o) => o.id === mealSize)!.hint}</p>
+        <button className="btn full" style={{ marginTop: 8 }} onClick={addSimple}>
+          ＋ {SLOTS.find((s) => s.id === slot)!.label}に記録（目安 P{simpleEstimate.protein}g・約{simpleEstimate.calories}kcal）{qty > 1 ? `×${qty}` : ""}
+        </button>
+
+        {(recent.length > 0 || frequent.length > 0) && (
+          <>
+            <div className="or-divider" style={{ marginTop: 14 }}><span>いつもの物をワンタップ</span></div>
+            <input className="search" placeholder="🔍 食べ物を検索" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </>
+        )}
 
         {shownRecent.length > 0 && (
           <>
@@ -184,17 +252,19 @@ export function MealScreen() {
           </>
         )}
 
-        <h3>自分で一から入力</h3>
-        <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 8 }} />
-        <div className="inline-inputs" style={{ marginTop: 8 }}>
-          <input placeholder="P(g)" type="number" value={p} onChange={(e) => setP(e.target.value)} />
-          <input placeholder="F(g)" type="number" value={f} onChange={(e) => setF(e.target.value)} />
-          <input placeholder="C(g)" type="number" value={c} onChange={(e) => setC(e.target.value)} />
-          <input placeholder="kcal" type="number" value={kcal} onChange={(e) => setKcal(e.target.value)} />
-        </div>
-        <button className="btn full" style={{ marginTop: 12 }} onClick={addCustom}>
-          ＋ {SLOTS.find((s) => s.id === slot)!.label}に記録{qty > 1 ? `（×${qty}）` : ""}
-        </button>
+        <details className="adv-input">
+          <summary>✍️ g単位で詳細に入力（慣れている人向け）</summary>
+          <input placeholder="メニュー名" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 8, marginTop: 10 }} />
+          <div className="inline-inputs" style={{ marginTop: 8 }}>
+            <input placeholder="P(g)" type="number" value={p} onChange={(e) => setP(e.target.value)} />
+            <input placeholder="F(g)" type="number" value={f} onChange={(e) => setF(e.target.value)} />
+            <input placeholder="C(g)" type="number" value={c} onChange={(e) => setC(e.target.value)} />
+            <input placeholder="kcal" type="number" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+          </div>
+          <button className="btn full" style={{ marginTop: 12 }} onClick={addCustom}>
+            ＋ {SLOTS.find((s) => s.id === slot)!.label}に記録{qty > 1 ? `（×${qty}）` : ""}
+          </button>
+        </details>
       </div>
 
       <div className="panel">
@@ -212,7 +282,7 @@ export function MealScreen() {
                 {items.map((m) => (
                   <div className="log-item" key={m.id}>
                     <span>{m.name}</span>
-                    <span>P{Math.round(m.protein)} / {Math.round(m.calories)}kcal</span>
+                    <span>{m.estimated ? "約 " : ""}P{Math.round(m.protein)} / {Math.round(m.calories)}kcal</span>
                   </div>
                 ))}
               </div>
