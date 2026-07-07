@@ -370,6 +370,23 @@ input, select {
   text-align: left;
 }
 .scan-cta:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #00000088; }
+
+/* 副導線に降格したバーコードCTA(主役はかんたん記録)。派手なグラデをやめ控えめに */
+.scan-cta.secondary-cta {
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 2px solid var(--line);
+  box-shadow: none;
+  margin-bottom: 4px;
+}
+.scan-cta.secondary-cta .scan-cta-sub { color: var(--muted); }
+.scan-cta.secondary-cta:active { transform: translate(1px, 1px); box-shadow: none; }
+
+/* ざっくり栄養表示の状態ラベル色 */
+.rough-good { color: var(--green); }
+.rough-mid  { color: var(--amber); }
+.rough-low  { color: var(--muted); }
+.rough-over { color: #e0a552; }
 .scan-cta-ico { font-size: 26px; line-height: 1; }
 .scan-cta-text { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .scan-cta-title { font-size: 11px; letter-spacing: 0.5px; }

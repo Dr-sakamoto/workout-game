@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useGameStore, selectToday } from "../store/useGameStore";
-import { computeCondition, sumMeals, proteinGoal, calorieGoal } from "../domain/meals";
+import { computeCondition, sumMeals, proteinGoal, calorieGoal, proteinStatus, calorieStatus } from "../domain/meals";
 import type { MealLog, MealSlot } from "../domain/types";
 import { registerCommunityFood } from "../lib/supabase";
 import { soundEngine } from "../sounds/soundEngine";
@@ -96,6 +96,11 @@ export function MealScreen() {
   const condition = computeCondition(meals, profile);
   const pGoal = proteinGoal(profile.weightKg);
   const cGoal = calorieGoal(profile);
+  // ざっくり表示用の割合とステータス(グラム数は出さない)
+  const pPct = pGoal > 0 ? totals.protein / pGoal : 0;
+  const cRatio = cGoal > 0 ? totals.calories / cGoal : 0;
+  const pStatus = proteinStatus(pPct);
+  const cStatus = calorieStatus(cRatio);
 
   const add = (m: { name: string; protein: number; fat: number; carb: number; calories: number; estimated?: boolean; barcode?: string }) => {
     logMeal({
@@ -139,21 +144,25 @@ export function MealScreen() {
       )}
       {editing && <MealEditModal meal={editing} onClose={() => setEditing(null)} />}
       <div className="panel">
-        <h2>今日の栄養</h2>
+        <h2>今日のごはん</h2>
         <div className="condition" style={{ marginBottom: 12 }}>
           <span className="big">{condition.emoji}</span>
           <div>
-            <div>{condition.label}(スコア {condition.score}）</div>
+            <div>{condition.label}</div>
             <div className={condition.expModifier >= 1 ? "mod-up" : "mod-down"}>
               トレEXP {condition.expModifier >= 1 ? "+" : ""}{Math.round((condition.expModifier - 1) * 100)}%
             </div>
           </div>
         </div>
-        <div className="bar-label"><span>🍗 タンパク質</span><span>{Math.round(totals.protein)} / {pGoal} g</span></div>
-        <div className="bar"><span className="fill-exp" style={{ width: `${Math.min(100, (totals.protein / pGoal) * 100)}%` }} /></div>
-        <div className="bar-label"><span>🔥 カロリー</span><span>{Math.round(totals.calories)} / {cGoal} kcal</span></div>
-        <div className="bar"><span className="fill-hp" style={{ width: `${Math.min(100, (totals.calories / cGoal) * 100)}%` }} /></div>
-        <p className="hint" style={{ marginTop: 8 }}>F {Math.round(totals.fat)}g ／ C {Math.round(totals.carb)}g</p>
+        {/* 初心者向けにグラム数ではなく「足りてる? 摂りすぎ?」の方向感で見せる。
+            正確な数値は各記録のタップ(編集)と詳細入力に残してある。 */}
+        <div className="bar-label"><span>🍗 タンパク質</span><span className={`rough-${pStatus.tone}`}>{pStatus.label}</span></div>
+        <div className="bar"><span className="fill-exp" style={{ width: `${Math.min(100, pPct * 100)}%` }} /></div>
+        <div className="bar-label"><span>🍚 食べた量</span><span className={`rough-${cStatus.tone}`}>{cStatus.label}</span></div>
+        <div className="bar"><span className="fill-hp" style={{ width: `${Math.min(100, cRatio * 100)}%` }} /></div>
+        <p className="hint" style={{ marginTop: 8 }}>
+          こまかい数字は気にしなくてOK。タンパク質をしっかり摂って、続けることが大事。
+        </p>
       </div>
 
       <div className="panel">
@@ -177,28 +186,7 @@ export function MealScreen() {
           </div>
         </div>
 
-        {/* パッケージ商品: バーコードスキャン */}
-        <button className="scan-cta" onClick={() => setShowScanner(true)}>
-          <span className="scan-cta-ico">📷</span>
-          <span className="scan-cta-text">
-            <span className="scan-cta-title">バーコードをスキャン</span>
-            <span className="scan-cta-sub">パッケージ商品はPFC・カロリーを自動入力</span>
-          </span>
-          <span className="scan-cta-arrow">›</span>
-        </button>
-
-        <div className="or-divider"><span>または</span></div>
-
-        <h3>🍚 自炊・外食をかんたん記録</h3>
-        <p className="hint" style={{ marginBottom: 8 }}>
-          バーコードがなくてもOK。2つ選ぶだけで目安を記録します。
-        </p>
-        <input
-          placeholder="メニュー名（なくてもOK）"
-          value={simpleName}
-          onChange={(e) => setSimpleName(e.target.value)}
-          style={{ marginBottom: 10 }}
-        />
+        {/* 主役の導線: 2タップのかんたん記録。バーコードは下の副導線に降格 */}
         <div className="simple-q">肉・魚・卵・大豆・プロテインは？</div>
         <div className="cat-tabs">
           {PROTEIN_LEVELS.map((o) => (
@@ -225,8 +213,26 @@ export function MealScreen() {
           ))}
         </div>
         <p className="hint simple-hint">目安: {MEAL_SIZES.find((o) => o.id === mealSize)!.hint}</p>
-        <button className="btn full" style={{ marginTop: 8 }} onClick={addSimple}>
-          ＋ {SLOTS.find((s) => s.id === slot)!.label}に記録（目安 P{simpleEstimate.protein}g・約{simpleEstimate.calories}kcal）{qty > 1 ? `×${qty}` : ""}
+        <input
+          placeholder="メニュー名（なくてもOK）"
+          value={simpleName}
+          onChange={(e) => setSimpleName(e.target.value)}
+          style={{ marginTop: 4, marginBottom: 10 }}
+        />
+        <button className="btn full" style={{ marginTop: 4 }} onClick={addSimple}>
+          ＋ {SLOTS.find((s) => s.id === slot)!.label}に記録{qty > 1 ? `（×${qty}）` : ""}
+        </button>
+
+        <div className="or-divider" style={{ marginTop: 16 }}><span>パッケージ商品なら</span></div>
+
+        {/* 副導線: バーコード(市販品のPFCを自動入力したいとき) */}
+        <button className="scan-cta secondary-cta" onClick={() => setShowScanner(true)}>
+          <span className="scan-cta-ico">📷</span>
+          <span className="scan-cta-text">
+            <span className="scan-cta-title">バーコードをスキャン</span>
+            <span className="scan-cta-sub">市販品のPFC・カロリーを自動入力</span>
+          </span>
+          <span className="scan-cta-arrow">›</span>
         </button>
 
         {(recent.length > 0 || frequent.length > 0) && (

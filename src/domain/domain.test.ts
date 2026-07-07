@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { computeStrengthExp, computeCardioExp, computeGold } from "./expEngine";
 import { addExp, createAvatar, expForLevel } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
-import { computeCondition } from "./meals";
+import { computeCondition, proteinStatus, calorieStatus } from "./meals";
 import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
 import { INITIAL_STATS } from "./avatar";
 import { EXERCISE_MAP } from "./exercises";
@@ -99,6 +99,24 @@ describe("meal condition", () => {
   it("栄養不足はデバフになる", () => {
     const c = computeCondition([meal(10, 300)], profile);
     expect(c.expModifier).toBeLessThan(1);
+  });
+});
+
+describe("ざっくり栄養表示(グラムを出さない状態ラベル)", () => {
+  it("タンパク質: 達成度が上がるほど前向きな言葉になる", () => {
+    expect(proteinStatus(0).tone).toBe("low");
+    expect(proteinStatus(0.4).tone).toBe("mid");
+    expect(proteinStatus(0.7).tone).toBe("good");
+    expect(proteinStatus(1.2).tone).toBe("good");
+    // ラベルは非空(UIにそのまま出す)
+    expect(proteinStatus(1).label.length).toBeGreaterThan(0);
+  });
+
+  it("カロリー: 少なすぎ→ちょうど→摂りすぎで状態が変わる", () => {
+    expect(calorieStatus(0).tone).toBe("low");
+    expect(calorieStatus(0.4).tone).toBe("low");
+    expect(calorieStatus(1.0).tone).toBe("good");
+    expect(calorieStatus(1.5).tone).toBe("over");
   });
 });
 

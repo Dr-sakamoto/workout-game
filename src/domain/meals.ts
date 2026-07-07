@@ -33,6 +33,34 @@ export function calorieGoal(profile: Profile): number {
   return maintenance + delta[profile.goal];
 }
 
+// --- 初心者向けの「ざっくり表現」 ---
+// 初心者に必要なのは g 単位の精度ではなく「タンパク質は足りてる?」
+// 「カロリーは摂りすぎ/足りない?」というざっくりした方向感(DESIGN.md ペルソナ)。
+// 数値の代わりに言葉で状態を返す。正確な数値は詳細入力・編集画面に残す。
+
+export interface RoughStatus {
+  label: string;
+  /** バーの色分け用: 足りている(good) / もう少し(mid) / 足りない(low) / 過剰(over) */
+  tone: "good" | "mid" | "low" | "over";
+}
+
+/** タンパク質の充足度(達成率)を言葉にする */
+export function proteinStatus(pct: number): RoughStatus {
+  if (pct >= 1) return { label: "バッチリ！", tone: "good" };
+  if (pct >= 0.6) return { label: "いい感じ", tone: "good" };
+  if (pct >= 0.3) return { label: "あと少し", tone: "mid" };
+  if (pct > 0) return { label: "もっと欲しい", tone: "low" };
+  return { label: "これから", tone: "low" };
+}
+
+/** カロリーの摂れ具合(目標比)を言葉にする。目標は増量/減量/維持を織り込み済み */
+export function calorieStatus(ratio: number): RoughStatus {
+  if (ratio <= 0) return { label: "これから", tone: "low" };
+  if (ratio < 0.6) return { label: "まだ食べてOK", tone: "low" };
+  if (ratio <= 1.15) return { label: "いいペース", tone: "good" };
+  return { label: "そろそろ十分", tone: "over" };
+}
+
 export interface Condition {
   /** 0..100 のコンディションスコア */
   score: number;
