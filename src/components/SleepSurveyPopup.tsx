@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGameStore } from "../store/useGameStore";
 import { SLEEP_OPTIONS } from "../domain/sleep";
 import type { SleepQuality } from "../domain/types";
+import { soundEngine } from "../sounds/soundEngine";
 
 export function SleepSurveyPopup({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<SleepQuality | null>(null);
@@ -10,6 +11,7 @@ export function SleepSurveyPopup({ onClose }: { onClose: () => void }) {
   const handleSubmit = () => {
     if (!selected) return;
     logSleep(selected);
+    soundEngine.play("sleep");
     onClose();
   };
 

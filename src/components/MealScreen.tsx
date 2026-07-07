@@ -3,6 +3,7 @@ import { useGameStore, selectToday } from "../store/useGameStore";
 import { computeCondition, sumMeals, proteinGoal, calorieGoal } from "../domain/meals";
 import type { MealLog, MealSlot } from "../domain/types";
 import { registerCommunityFood } from "../lib/supabase";
+import { soundEngine } from "../sounds/soundEngine";
 import {
   PROTEIN_LEVELS,
   MEAL_SIZES,
@@ -96,7 +97,7 @@ export function MealScreen() {
   const pGoal = proteinGoal(profile.weightKg);
   const cGoal = calorieGoal(profile);
 
-  const add = (m: { name: string; protein: number; fat: number; carb: number; calories: number; estimated?: boolean; barcode?: string }) =>
+  const add = (m: { name: string; protein: number; fat: number; carb: number; calories: number; estimated?: boolean; barcode?: string }) => {
     logMeal({
       name: qty === 1 ? m.name : `${m.name}×${qty}`,
       ...scale(m, qty),
@@ -105,6 +106,8 @@ export function MealScreen() {
       // 数量倍した値は商品1個分と一致しないので、バーコードの紐付けは等倍のときだけ
       barcode: qty === 1 ? m.barcode : undefined,
     });
+    soundEngine.play("meal");
+  };
 
   const simpleEstimate = estimateSimpleMeal(proteinLevel, mealSize);
   const addSimple = () => {
@@ -158,7 +161,7 @@ export function MealScreen() {
         {/* 時間帯 */}
         <div className="cat-tabs">
           {SLOTS.map((s) => (
-            <button key={s.id} className={`cat-tab ${slot === s.id ? "active" : ""}`} onClick={() => setSlot(s.id)}>
+            <button key={s.id} className={`cat-tab ${slot === s.id ? "active" : ""}`} onClick={() => { setSlot(s.id); soundEngine.play("select"); }}>
               {s.emoji}{s.label}
             </button>
           ))}
@@ -202,7 +205,7 @@ export function MealScreen() {
             <button
               key={o.id}
               className={`cat-tab ${proteinLevel === o.id ? "active" : ""}`}
-              onClick={() => setProteinLevel(o.id)}
+              onClick={() => { setProteinLevel(o.id); soundEngine.play("select"); }}
             >
               {o.emoji}{o.label}
             </button>
@@ -215,7 +218,7 @@ export function MealScreen() {
             <button
               key={o.id}
               className={`cat-tab ${mealSize === o.id ? "active" : ""}`}
-              onClick={() => setMealSize(o.id)}
+              onClick={() => { setMealSize(o.id); soundEngine.play("select"); }}
             >
               {o.emoji}{o.label}
             </button>
@@ -338,6 +341,7 @@ function MealEditModal({ meal, onClose }: { meal: MealLog; onClose: () => void }
       estimated: false,
     };
     updateMeal(meal.id, patch);
+    soundEngine.play("click");
     if (fixCommunity && meal.barcode) {
       // 共有DBの修正は投げっぱなしでよい(失敗しても本人の記録は直っている)
       void registerCommunityFood({
@@ -358,6 +362,7 @@ function MealEditModal({ meal, onClose }: { meal: MealLog; onClose: () => void }
       return;
     }
     deleteMeal(meal.id);
+    soundEngine.play("delete");
     onClose();
   };
 
@@ -368,7 +373,7 @@ function MealEditModal({ meal, onClose }: { meal: MealLog; onClose: () => void }
         <h3>記録を修正</h3>
         <div className="cat-tabs">
           {SLOTS.map((s) => (
-            <button key={s.id} className={`cat-tab ${slot === s.id ? "active" : ""}`} onClick={() => setSlot(s.id)}>
+            <button key={s.id} className={`cat-tab ${slot === s.id ? "active" : ""}`} onClick={() => { setSlot(s.id); soundEngine.play("select"); }}>
               {s.emoji}{s.label}
             </button>
           ))}

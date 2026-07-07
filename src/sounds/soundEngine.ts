@@ -2,10 +2,24 @@
 
 // --- 音程定数 (Hz) ---
 const A2 = 110.0;
-const C4 = 261.63, E4 = 329.63, G4 = 392.0;
-const C5 = 523.25, E5 = 659.25;
+const C4 = 261.63, E4 = 329.63, G4 = 392.0, A4 = 440.0;
+const C5 = 523.25, E5 = 659.25, G5 = 783.99, B5 = 987.77;
+const E6 = 1318.51;
 
-export type SEType = "click" | "workout" | "levelup" | "bossDefeat" | "damage" | "quest";
+export type SEType =
+  | "click"
+  | "select"
+  | "workout"
+  | "levelup"
+  | "bossDefeat"
+  | "damage"
+  | "quest"
+  | "meal"
+  | "purchase"
+  | "restDone"
+  | "sleep"
+  | "scan"
+  | "delete";
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -114,6 +128,11 @@ class SoundEngine {
         this.tone(se, 440, t, 0.055, "square", 0.25);
         break;
 
+      // タブ移動・種目選択などの軽い操作フィードバック(短く控えめに)
+      case "select":
+        this.tone(se, 660, t, 0.03, "triangle", 0.14);
+        break;
+
       case "workout":
         [C4, E4, G4, C5].forEach((f, i) =>
           this.tone(se, f, t + i * 0.09, 0.11, "square", 0.28),
@@ -157,6 +176,44 @@ class SoundEngine {
       case "quest":
         this.tone(se, G4, t, 0.15, "triangle", 0.3);
         this.tone(se, C5, t + 0.16, 0.38, "triangle", 0.35);
+        break;
+
+      // 食事を記録: 満足感のある上昇二音＋小さなきらめき
+      case "meal":
+        this.tone(se, E4, t, 0.08, "triangle", 0.26);
+        this.tone(se, A4, t + 0.07, 0.12, "triangle", 0.28);
+        this.tone(se, E5, t + 0.15, 0.16, "triangle", 0.18);
+        break;
+
+      // ショップ購入: コイン風
+      case "purchase":
+        this.tone(se, B5, t, 0.06, "square", 0.22);
+        this.tone(se, E6, t + 0.06, 0.3, "square", 0.22);
+        break;
+
+      // レストタイマー終了: 急かさない穏やかな合図
+      case "restDone":
+        this.tone(se, C5, t, 0.12, "triangle", 0.3);
+        this.tone(se, G5, t + 0.13, 0.28, "triangle", 0.3);
+        break;
+
+      // 睡眠を記録: 落ち着いた下降音
+      case "sleep":
+        this.tone(se, G4, t, 0.12, "triangle", 0.2);
+        this.tone(se, E4, t + 0.12, 0.14, "triangle", 0.2);
+        this.tone(se, C4, t + 0.26, 0.3, "triangle", 0.18);
+        break;
+
+      // バーコード読み取り成功: スキャナのビープ
+      case "scan":
+        this.tone(se, 1200, t, 0.05, "square", 0.2);
+        this.tone(se, 1600, t + 0.07, 0.12, "square", 0.22);
+        break;
+
+      // 記録の削除: 短い下降音
+      case "delete":
+        this.tone(se, A4, t, 0.05, "square", 0.16);
+        this.tone(se, E4, t + 0.05, 0.1, "square", 0.16);
         break;
     }
   }

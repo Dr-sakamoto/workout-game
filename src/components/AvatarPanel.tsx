@@ -9,6 +9,7 @@ import { VISUAL_PARTS, PART_LABELS, partTiers } from "../domain/parts";
 import type { StatKey, SleepQuality } from "../domain/types";
 import { PixelAvatar } from "./PixelAvatar";
 import { GrowthPanel } from "./GrowthPanel";
+import { soundEngine } from "../sounds/soundEngine";
 
 export function AvatarPanel() {
   const profile = useGameStore((s) => s.profile)!;
@@ -147,7 +148,7 @@ export function AvatarPanel() {
               <button
                 key={opt.quality}
                 className={`sleep-btn ${sleep?.quality === opt.quality ? "selected" : ""}`}
-                onClick={() => logSleep(opt.quality as SleepQuality)}
+                onClick={() => { logSleep(opt.quality as SleepQuality); soundEngine.play("sleep"); }}
               >
                 <span className="sleep-btn-ico">{opt.emoji}</span>
                 <span className="sleep-btn-label">{opt.label}</span>

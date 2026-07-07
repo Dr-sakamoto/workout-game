@@ -6,6 +6,7 @@ import { lookupCommunityFood, registerCommunityFood } from "../lib/supabase";
 import { analyzeNutritionLabel } from "../lib/gemini";
 import { lookupCanonicalProductName } from "../lib/yahooShopping";
 import { lookupOpenFoodFactsName } from "../lib/openFoodFacts";
+import { soundEngine } from "../sounds/soundEngine";
 
 interface FoodResult {
   name: string;
@@ -98,6 +99,7 @@ export function BarcodeScanner({ onResult, onClose }: Props) {
     setNameConfirmed(false); // 前回スキャン分の状態を持ち越さない
     setManualName("");
     stopEverything();
+    soundEngine.play("scan"); // バーコードを読み取れた合図(実機スキャナのビープ風)
     setPhase("looking-up");
 
     // 誰かが初回登録済みなら、その値をそのまま使える（ユーザー共有DB）
