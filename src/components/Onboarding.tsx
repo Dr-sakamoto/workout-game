@@ -3,6 +3,7 @@ import { useGameStore } from "../store/useGameStore";
 import { computeBmi, bodyTypeLabel } from "../domain/physique";
 import { computeBuild } from "../domain/build";
 import type { Goal } from "../domain/types";
+import { SCHEDULE_PRESETS, scheduleLabel } from "../domain/schedule";
 import { PixelAvatar } from "./PixelAvatar";
 
 export function Onboarding() {
@@ -11,6 +12,9 @@ export function Onboarding() {
   const [height, setHeight] = useState("172");
   const [weight, setWeight] = useState("65");
   const [goal, setGoal] = useState<Goal>("bulk");
+  // 初心者にはこちらから提案(既定は週3)。ストリークはこの予定日基準で判定される。
+  const [scheduleId, setScheduleId] = useState("w3");
+  const trainingDays = SCHEDULE_PRESETS.find((s) => s.id === scheduleId)!.days;
 
   const h = Number(height) || 0;
   const w = Number(weight) || 0;
@@ -76,12 +80,33 @@ export function Onboarding() {
             <option value="keep">維持</option>
           </select>
 
+          <label>トレーニングの頻度</label>
+          <p className="hint" style={{ margin: "2px 0 8px" }}>
+            週に何回鍛える? この予定日にトレするとストリークが伸びる。休養日は途切れの対象外。
+            （あとから変えられるが、基本は据え置きでコツコツと）
+          </p>
+          <div className="sched-grid">
+            {SCHEDULE_PRESETS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`sched-card ${scheduleId === s.id ? "active" : ""}`}
+                onClick={() => setScheduleId(s.id)}
+              >
+                <span className="sched-emoji">{s.emoji}</span>
+                <span className="sched-label">{s.label}</span>
+                <span className="sched-desc">{s.desc}</span>
+              </button>
+            ))}
+          </div>
+          <p className="hint" style={{ marginTop: 6 }}>予定日: {scheduleLabel(trainingDays)}</p>
+
           <button
             className="btn green full"
             style={{ marginTop: 18 }}
             disabled={!valid}
             onClick={() =>
-              initProfile({ name: name.trim(), heightCm: h, weightKg: w, goal })
+              initProfile({ name: name.trim(), heightCm: h, weightKg: w, goal, trainingDays })
             }
           >
             ▶ 冒険を始める

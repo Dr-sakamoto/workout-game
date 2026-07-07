@@ -3,6 +3,7 @@ import { useGameStore, selectToday } from "../store/useGameStore";
 import { EXERCISES, EXERCISE_MAP, CATEGORY_LABELS } from "../domain/exercises";
 import type { ExerciseCategory, WorkoutSet } from "../domain/types";
 import { computeBaseExp } from "../domain/expEngine";
+import { soundEngine } from "../sounds/soundEngine";
 
 const CATEGORIES: ExerciseCategory[] = [
   "chest", "back", "legs", "shoulders", "arms", "core", "cardio",
@@ -23,15 +24,25 @@ function Stepper({ value, step, min, onChange, suffix }: {
 }
 
 // セット間レストタイマー(記録すると自動スタート)
-function RestTimer({ endsAt, onAdd, onSkip }: {
-  endsAt: number | null; onAdd: () => void; onSkip: () => void;
+function RestTimer({ endsAt, onAdd, onSkip, onDone }: {
+  endsAt: number | null; onAdd: () => void; onSkip: () => void; onDone: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!endsAt) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
+    let done = false;
+    const fireIfDone = () => {
+      if (!done && Date.now() >= endsAt) {
+        done = true;
+        onDone(); // レスト終了の合図を一度だけ鳴らす
+      }
+    };
+    const t = setInterval(() => {
+      setNow(Date.now());
+      fireIfDone();
+    }, 250);
     return () => clearInterval(t);
-  }, [endsAt]);
+  }, [endsAt, onDone]);
   if (!endsAt) return null;
   const remain = Math.max(0, Math.ceil((endsAt - now) / 1000));
   if (remain <= 0) return null;
@@ -135,12 +146,12 @@ export function WorkoutScreen() {
 
         <div className="chip-grid">
           {list.map((e) => (
-            <div key={e.id} className={`chip ${selected === e.id ? "active" : ""}`} onClick={() => setSelected(e.id)}>
+            <div key={e.id} className={`chip ${selected === e.id ? "active" : ""}`} onClick={() => { setSelected(e.id); soundEngine.play("select"); }}>
               <span className="emoji">{e.emoji}</span>
               <span className="chip-name">{e.name}</span>
               <button
                 className={`star ${favorites.includes(e.id) ? "on" : ""}`}
-                onClick={(ev) => { ev.stopPropagation(); toggleFavorite(e.id); }}
+                onClick={(ev) => { ev.stopPropagation(); toggleFavorite(e.id); soundEngine.play("select"); }}
               >★</button>
             </div>
           ))}
@@ -170,7 +181,7 @@ export function WorkoutScreen() {
                 {exercise.bodyweight && (
                   <p className="hint">※自重種目。重量は加重ぶんのみ(なければ0)。体重 {profile.weightKg}kg を負荷に自動計算。</p>
                 )}
-                <button className="btn secondary" onClick={() => setSets([...sets, { ...sets[sets.length - 1] }])}>
+                <button className="btn secondary" onClick={() => { setSets([...sets, { ...sets[sets.length - 1] }]); soundEngine.play("select"); }}>
                   ＋ セット追加（前セットをコピー）
                 </button>
               </>
@@ -207,6 +218,7 @@ export function WorkoutScreen() {
         endsAt={restEndsAt}
         onAdd={() => setRestEndsAt((t) => (t ?? Date.now()) + 30000)}
         onSkip={() => setRestEndsAt(null)}
+        onDone={() => soundEngine.play("restDone")}
       />
     </div>
   );

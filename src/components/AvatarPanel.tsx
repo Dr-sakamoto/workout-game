@@ -9,6 +9,7 @@ import { VISUAL_PARTS, PART_LABELS, partTiers } from "../domain/parts";
 import type { StatKey, SleepQuality } from "../domain/types";
 import { PixelAvatar } from "./PixelAvatar";
 import { GrowthPanel } from "./GrowthPanel";
+import { soundEngine } from "../sounds/soundEngine";
 
 export function AvatarPanel() {
   const profile = useGameStore((s) => s.profile)!;
@@ -147,7 +148,7 @@ export function AvatarPanel() {
               <button
                 key={opt.quality}
                 className={`sleep-btn ${sleep?.quality === opt.quality ? "selected" : ""}`}
-                onClick={() => logSleep(opt.quality as SleepQuality)}
+                onClick={() => { logSleep(opt.quality as SleepQuality); soundEngine.play("sleep"); }}
               >
                 <span className="sleep-btn-ico">{opt.emoji}</span>
                 <span className="sleep-btn-label">{opt.label}</span>
@@ -161,7 +162,7 @@ export function AvatarPanel() {
         <div className="condition" style={{ marginTop: 14 }}>
           <span className="big">{condition.emoji}</span>
           <div>
-            <div>{condition.label}（スコア {condition.score}）</div>
+            <div>{condition.label}</div>
             <div className={condition.expModifier >= 1 ? "mod-up" : "mod-down"}>
               食事補正 {condition.expModifier >= 1 ? "+" : ""}{Math.round((condition.expModifier - 1) * 100)}%
             </div>

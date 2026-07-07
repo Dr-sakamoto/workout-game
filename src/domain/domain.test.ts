@@ -2,7 +2,15 @@ import { describe, it, expect } from "vitest";
 import { computeStrengthExp, computeCardioExp, computeGold } from "./expEngine";
 import { addExp, createAvatar, expForLevel } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
-import { computeCondition } from "./meals";
+import { computeCondition, proteinStatus, calorieStatus } from "./meals";
+import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
+import {
+  advanceScheduleStreak,
+  missedScheduledDays,
+  isScheduledDay,
+  effectiveSchedule,
+  scheduleLabel,
+} from "./schedule";
 import { INITIAL_STATS } from "./avatar";
 import { EXERCISE_MAP } from "./exercises";
 import { bossAt, BOSSES } from "./bosses";
@@ -95,9 +103,119 @@ describe("meal condition", () => {
     expect(c.expModifier).toBeGreaterThan(1);
   });
 
-  it("栄養不足はデバフになる", () => {
+  it("正直に記録してもデバフにならない(記録は必ず±0%以上)", () => {
+    // 少ししか食べていない日でも、記録した時点で『未記録』より損はしない
+    const little = computeCondition([meal(10, 300)], profile);
+    expect(little.expModifier).toBeGreaterThanOrEqual(1);
+    // むしろ記録行動のぶん、未記録(±0%)より少しだけ得
+    const none = computeCondition([], profile);
+    expect(little.expModifier).toBeGreaterThan(none.expModifier);
+  });
+
+  it("タンパク質を多く摂るほどボーナスが大きい(単調)", () => {
+    const low = computeCondition([meal(20, 500)], profile);
+    const high = computeCondition([meal(110, 500)], profile);
+    expect(high.expModifier).toBeGreaterThan(low.expModifier);
+  });
+
+  it("栄養不足でもネガティブなラベルにはしない", () => {
     const c = computeCondition([meal(10, 300)], profile);
-    expect(c.expModifier).toBeLessThan(1);
+    expect(c.label).not.toContain("不足");
+  });
+});
+
+describe("ざっくり栄養表示(グラムを出さない状態ラベル)", () => {
+  it("タンパク質: 達成度が上がるほど前向きな言葉になる", () => {
+    expect(proteinStatus(0).tone).toBe("low");
+    expect(proteinStatus(0.4).tone).toBe("mid");
+    expect(proteinStatus(0.7).tone).toBe("good");
+    expect(proteinStatus(1.2).tone).toBe("good");
+    // ラベルは非空(UIにそのまま出す)
+    expect(proteinStatus(1).label.length).toBeGreaterThan(0);
+  });
+
+  it("カロリー: 少なすぎ→ちょうど→摂りすぎで状態が変わる", () => {
+    expect(calorieStatus(0).tone).toBe("low");
+    expect(calorieStatus(0.4).tone).toBe("low");
+    expect(calorieStatus(1.0).tone).toBe("good");
+    expect(calorieStatus(1.5).tone).toBe("over");
+  });
+});
+
+describe("simple meal (かんたん記録の推定)", () => {
+  it("PFCの合計エネルギーが表示カロリーとおおむね一致する", () => {
+    for (const p of PROTEIN_LEVELS) {
+      for (const s of MEAL_SIZES) {
+        const e = estimateSimpleMeal(p.id, s.id);
+        const energy = e.protein * 4 + e.fat * 9 + e.carb * 4;
+        // 丸め誤差ぶんだけ許容
+        expect(Math.abs(energy - e.calories)).toBeLessThanOrEqual(10);
+      }
+    }
+  });
+
+  it("タンパク質しっかり×3食で初心者の目標に近づく(習慣化ループが回る)", () => {
+    // 体重60kgの目標 = 96g。しっかり30g×3食+間食で概ね達成圏
+    const e = estimateSimpleMeal("solid", "normal");
+    expect(e.protein * 3).toBeGreaterThanOrEqual(85);
+  });
+
+  it("量感の選択がカロリーの大小に単調に反映される", () => {
+    const big = estimateSimpleMeal("some", "big");
+    const normal = estimateSimpleMeal("some", "normal");
+    const light = estimateSimpleMeal("some", "light");
+    expect(big.calories).toBeGreaterThan(normal.calories);
+    expect(normal.calories).toBeGreaterThan(light.calories);
+  });
+
+  it("自動ラベルは選択内容が分かる名前になる", () => {
+    expect(simpleMealName("solid", "normal")).toContain("しっかり");
+    expect(simpleMealName("none", "light")).toContain("軽め");
+  });
+});
+
+describe("スケジュール基準のストリーク", () => {
+  // 2024-01-01(月) / 03(水) / 05(金) / 08(月)。予定は月・水・金。
+  const MWF = [1, 3, 5];
+
+  it("予定日が判定できる", () => {
+    expect(isScheduledDay("2024-01-01", MWF)).toBe(true); // 月
+    expect(isScheduledDay("2024-01-02", MWF)).toBe(false); // 火(休養日)
+    expect(isScheduledDay("2024-01-03", MWF)).toBe(true); // 水
+  });
+
+  it("予定日を連続でこなすと伸びる", () => {
+    let s = { count: 0, lastDate: null as string | null };
+    s = advanceScheduleStreak(s, "2024-01-01", MWF); // 月
+    expect(s.count).toBe(1);
+    s = advanceScheduleStreak(s, "2024-01-03", MWF); // 水
+    expect(s.count).toBe(2);
+    s = advanceScheduleStreak(s, "2024-01-05", MWF); // 金
+    expect(s.count).toBe(3);
+  });
+
+  it("予定日を飛ばすと1にリセットされる", () => {
+    // 月にトレ → 水を飛ばして金にトレ → 継続は切れて1
+    let s = advanceScheduleStreak({ count: 3, lastDate: "2024-01-01" }, "2024-01-05", MWF);
+    expect(s.count).toBe(1);
+  });
+
+  it("休養日(予定外)のトレは判定に関与しない=missedに数えない", () => {
+    // 月にトレ、火(休養日)は無視。今日が水でまだ未トレでも、間の予定日欠落はゼロ
+    const missed = missedScheduledDays("2024-01-01", "2024-01-03", MWF, new Set(["2024-01-01"]));
+    expect(missed).toBe(0);
+  });
+
+  it("予定日を飛ばした分だけmissedになる", () => {
+    // 月にトレ→今日は金。間の水(予定日)を飛ばしている → missed 1
+    const missed = missedScheduledDays("2024-01-01", "2024-01-05", MWF, new Set(["2024-01-01"]));
+    expect(missed).toBe(1);
+  });
+
+  it("未設定スケジュールは既定(週3)にフォールバックし、表示できる", () => {
+    expect(effectiveSchedule(undefined)).toEqual([1, 3, 5]);
+    expect(effectiveSchedule([2])).toEqual([2]);
+    expect(scheduleLabel([1, 3, 5])).toBe("月・水・金");
   });
 });
 

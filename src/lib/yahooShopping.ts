@@ -2,6 +2,10 @@
 // コミュニティDBは「最初にスキャンした人がAIに推測させた名前」が全員の
 // 表記になってしまうと表記ゆれが発生するため、可能な限りここで正規名を
 // 確定させてから撮影・登録に進む。取得できなければ従来の撮影フローへ。
+//
+// 注意: このエンドポイントは Vercel Functions (api/yahoo-jan.ts)。
+// `vite` のローカル開発サーバーには存在しないので、開発中は常に null になる
+// (`vercel dev` を使うか、デプロイ環境で確認すること)。
 export async function lookupCanonicalProductName(barcode: string): Promise<string | null> {
   let res: Response;
   try {
@@ -9,8 +13,12 @@ export async function lookupCanonicalProductName(barcode: string): Promise<strin
   } catch {
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn(`yahoo-jan API がエラー応答: ${res.status}(ローカル開発では未提供)`);
+    return null;
+  }
 
   const data = await res.json();
+  if (data?.reason) console.warn(`yahoo-jan: 商品名を取得できませんでした (${data.reason})`);
   return typeof data?.name === "string" && data.name.trim() ? data.name.trim() : null;
 }

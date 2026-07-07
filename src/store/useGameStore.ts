@@ -30,6 +30,12 @@ import {
 import { overallMuscle } from "../domain/build";
 import { girthFromBmi, computeBmi } from "../domain/physique";
 import { bossAt } from "../domain/bosses";
+import {
+  effectiveSchedule,
+  isScheduledDay,
+  advanceScheduleStreak,
+  missedScheduledDays,
+} from "../domain/schedule";
 import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
 import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
 
@@ -128,9 +134,12 @@ interface GameState {
 
   initProfile: (p: Profile) => void;
   setBodyFat: (n: number) => void;
+  changeSchedule: (days: number[]) => void;
   toggleFavorite: (exerciseId: string) => void;
   logWorkout: (exerciseId: string, input: { sets?: WorkoutSet[]; minutes?: number }) => void;
   logMeal: (meal: Omit<MealLog, "id" | "date">) => void;
+  updateMeal: (id: string, patch: Partial<Omit<MealLog, "id" | "date">>) => void;
+  deleteMeal: (id: string) => void;
   logSleep: (quality: SleepQuality) => void;
   claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
   claimAchievement: (id: string, rewardGold: number) => void;
@@ -139,34 +148,6 @@ interface GameState {
   clearPenalty: () => void;
   applyDailyPenalty: () => void;
   resetAll: () => void;
-}
-
-/** 2つの YYYY-MM-DD 日付の差(日数)を返す。bはaより後を想定。 */
-function daysBetween(from: string, to: string): number {
-  const a = new Date(from + "T00:00:00");
-  const b = new Date(to + "T00:00:00");
-  return Math.round((b.getTime() - a.getTime()) / 86400000);
-}
-
-/** ストリーク更新。シールドがあれば途切れを1回防ぐ。 */
-function applyStreak(
-  streak: { count: number; lastDate: string | null },
-  today: string,
-  shields: number,
-): { count: number; lastDate: string; shieldUsed: boolean } {
-  if (streak.lastDate === today) {
-    return { count: streak.count, lastDate: today, shieldUsed: false };
-  }
-  const yesterday = todayKey(new Date(Date.now() - 86400000));
-  if (streak.lastDate === yesterday || streak.lastDate === null) {
-    const count = streak.lastDate === yesterday ? streak.count + 1 : 1;
-    return { count, lastDate: today, shieldUsed: false };
-  }
-  // 途切れ。シールドがあれば継続を守る。
-  if (shields > 0) {
-    return { count: streak.count + 1, lastDate: today, shieldUsed: true };
-  }
-  return { count: 1, lastDate: today, shieldUsed: false };
 }
 
 const FRESH = {
@@ -216,6 +197,15 @@ export const useGameStore = create<GameState>()(
         }),
 
       setBodyFat: (n) => set({ bodyFat: Math.max(0, Math.min(4, n)) }),
+
+      // トレーニングスケジュールの変更。SNSのユーザーネーム的に「基本は据え置き」
+      // の想定(将来、変更に課金/頻度制限を付ける)。空配列は受け付けない。
+      changeSchedule: (days) =>
+        set((s) =>
+          !s.profile || days.length === 0
+            ? {}
+            : { profile: { ...s.profile, trainingDays: [...days].sort((a, b) => a - b) } },
+        ),
 
       toggleFavorite: (id) =>
         set((s) => ({
@@ -295,9 +285,29 @@ export const useGameStore = create<GameState>()(
           .map(([k, v]) => `${k.toUpperCase()} +${v}`)
           .join("  ");
 
-        // --- ストリーク(シールド対応) ---
-        const streakRes = applyStreak(state.streak, today, state.streakShields);
-        const streakShields = state.streakShields - (streakRes.shieldUsed ? 1 : 0);
+        // --- ストリーク(スケジュール基準) ---
+        // 予定日(本人の週間スケジュール)にトレした時だけ継続を伸ばす。予定日を
+        // 飛ばすと途切れる。予定外の日(休養日)のトレはストリークに影響しない。
+        const sched = effectiveSchedule(profile.trainingDays);
+        let streakRes = state.streak;
+        let shieldUsed = false;
+        if (isScheduledDay(today, sched)) {
+          const advanced = advanceScheduleStreak(state.streak, today, sched);
+          // 予定日を飛ばして継続が切れた場合、シールド在庫があれば1回守る
+          // (Phase2でキャラ絡みの"課金で見逃し"イベントに置き換え予定)
+          const brokeChain =
+            state.streak.lastDate !== null &&
+            state.streak.lastDate !== today &&
+            advanced.count === 1 &&
+            state.streak.count > 0;
+          if (brokeChain && state.streakShields > 0) {
+            streakRes = { count: state.streak.count + 1, lastDate: today };
+            shieldUsed = true;
+          } else {
+            streakRes = advanced;
+          }
+        }
+        const streakShields = state.streakShields - (shieldUsed ? 1 : 0);
 
         // --- 自己ベスト判定(ライバルは自分) ---
         const records = state.records;
@@ -336,7 +346,7 @@ export const useGameStore = create<GameState>()(
           if (todayExp > records.bestDayExp && records.bestDayExp > 0) {
             newBest = "1日の最高EXPを更新！";
           } else if (streakRes.count > records.bestStreak && records.bestStreak > 0) {
-            newBest = `最長ストリーク更新！ ${streakRes.count}日`;
+            newBest = `最長ストリーク更新！ ${streakRes.count}回`;
           }
         }
 
@@ -395,6 +405,16 @@ export const useGameStore = create<GameState>()(
         };
         set({ mealLogs: [log, ...state.mealLogs] });
       },
+
+      // 食事の修正・削除。コンディションはワークアウト記録時に都度計算される
+      // ため、過去に獲得したEXPへの遡及はない(修正はその後の補正にのみ効く)。
+      updateMeal: (id, patch) =>
+        set((s) => ({
+          mealLogs: s.mealLogs.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+        })),
+
+      deleteMeal: (id) =>
+        set((s) => ({ mealLogs: s.mealLogs.filter((m) => m.id !== id) })),
 
       claimQuest: (questId, rewardExp, rewardGold) => {
         const state = get();
@@ -461,17 +481,19 @@ export const useGameStore = create<GameState>()(
         if (!state.profile) return;
         if (state.lastDailyCheckDate === today) return;
 
-        const lastWorkout = state.streak.lastDate;
+        const lastWorkout = state.workoutLogs[0]?.date ?? null;
         if (!lastWorkout) {
           // まだ一度もトレーニングしていない → ペナルティなし
           set({ lastDailyCheckDate: today });
           return;
         }
 
-        // 最後のトレーニング日から今日まで何日空いたか
-        // 例: lastWorkout=6/28, today=6/30 → daysSince=2, missedDays=1(6/29が空白)
-        const daysSince = daysBetween(lastWorkout, today);
-        const missedDays = Math.min(Math.max(0, daysSince - 1), 3); // 最大3日分まで
+        // サボり判定もスケジュール基準にする(休養日=予定外の日は"サボり"に
+        // 数えない)。最後のトレ以降・今日より前で、トレしていない予定日の数だけ
+        // ダメージを受ける。これでストリークとペナルティの基準が揃う。
+        const sched = effectiveSchedule(state.profile.trainingDays);
+        const trained = new Set(state.workoutLogs.map((w) => w.date));
+        const missedDays = missedScheduledDays(lastWorkout, today, sched, trained, 3);
 
         if (missedDays === 0) {
           set({ lastDailyCheckDate: today });

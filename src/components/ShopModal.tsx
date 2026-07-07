@@ -1,5 +1,6 @@
 import { useGameStore } from "../store/useGameStore";
 import { SHOP_ITEMS } from "../domain/shop";
+import { soundEngine } from "../sounds/soundEngine";
 
 export function ShopModal({ onClose }: { onClose: () => void }) {
   const gold = useGameStore((s) => s.avatar.gold);
@@ -37,7 +38,7 @@ export function ShopModal({ onClose }: { onClose: () => void }) {
               <button
                 className="btn green full"
                 disabled={!canBuy}
-                onClick={() => buyItem(item.id)}
+                onClick={() => { buyItem(item.id); soundEngine.play("purchase"); }}
               >
                 {canBuy ? "購入する" : "ゴールド不足"}
               </button>

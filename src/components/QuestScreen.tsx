@@ -1,11 +1,15 @@
-import { useGameStore, selectToday, selectProgress, ACHIEVEMENTS } from "../store/useGameStore";
+import { useGameStore, selectToday, selectProgress, ACHIEVEMENTS, todayKey } from "../store/useGameStore";
 import { EXERCISE_MAP } from "../domain/exercises";
+import { effectiveSchedule, scheduleLabel, isScheduledDay } from "../domain/schedule";
 
 export function QuestScreen() {
   const claimQuest = useGameStore((s) => s.claimQuest);
   const claimAchievement = useGameStore((s) => s.claimAchievement);
   const streak = useGameStore((s) => s.streak);
+  const profile = useGameStore((s) => s.profile);
   const records = useGameStore((s) => s.records);
+  const sched = effectiveSchedule(profile?.trainingDays);
+  const isTrainingDay = isScheduledDay(todayKey(), sched);
   const progress = useGameStore(selectProgress);
   const claimedAch = useGameStore((s) => s.claimedAchievements);
   const { quests, claimed } = useGameStore(selectToday);
@@ -26,11 +30,15 @@ export function QuestScreen() {
       <div className="panel">
         <h2>🔥 ストリーク</h2>
         <div style={{ fontSize: 24, color: "var(--amber)", textAlign: "center", padding: "8px 0" }}>
-          {streak.count} 日連続
+          {streak.count} 回連続
         </div>
         <p className="hint" style={{ textAlign: "center" }}>
-          毎日トレーニングを記録して連続記録を伸ばそう。途切れると1日目に戻る。
+          予定日（{scheduleLabel(sched)}）にトレーニングすると連続記録が伸びる。<br />
+          予定日を飛ばすと途切れるが、休養日は数えないので安心して休める。
         </p>
+        <div className={`sched-today ${isTrainingDay ? "on" : ""}`}>
+          {isTrainingDay ? "💪 今日は予定日！鍛えてストリークを伸ばそう" : "🛌 今日は休養日。無理せず回復も大事"}
+        </div>
       </div>
 
       <div className="panel">
@@ -41,7 +49,7 @@ export function QuestScreen() {
         </div>
         <div className="log-item">
           <span>最長ストリーク</span>
-          <span className="exp">{records.bestStreak} 日</span>
+          <span className="exp">{records.bestStreak} 回</span>
         </div>
         {volBests.length === 0 ? (
           <p className="hint" style={{ marginTop: 8 }}>

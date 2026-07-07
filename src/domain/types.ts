@@ -60,6 +60,10 @@ export interface MealLog {
   carb: number; // g
   calories: number;
   slot?: MealSlot;
+  /** かんたん記録などの概算値か(表示に「約」を付ける) */
+  estimated?: boolean;
+  /** バーコードスキャン由来の記録。修正時にコミュニティDBへ反映できる */
+  barcode?: string;
 }
 
 export type SleepQuality = "good" | "normal" | "poor";
@@ -76,6 +80,9 @@ export interface Profile {
   heightCm: number;
   weightKg: number;
   goal: Goal;
+  /** 週間トレーニング予定日(0=日〜6=土)。ストリークはこの予定日基準で判定する。
+   *  未設定の既存プロフィールは既定スケジュール(週3)として扱う。 */
+  trainingDays?: number[];
 }
 
 export interface Avatar {

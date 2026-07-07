@@ -33,6 +33,34 @@ export function calorieGoal(profile: Profile): number {
   return maintenance + delta[profile.goal];
 }
 
+// --- 初心者向けの「ざっくり表現」 ---
+// 初心者に必要なのは g 単位の精度ではなく「タンパク質は足りてる?」
+// 「カロリーは摂りすぎ/足りない?」というざっくりした方向感(DESIGN.md ペルソナ)。
+// 数値の代わりに言葉で状態を返す。正確な数値は詳細入力・編集画面に残す。
+
+export interface RoughStatus {
+  label: string;
+  /** バーの色分け用: 足りている(good) / もう少し(mid) / 足りない(low) / 過剰(over) */
+  tone: "good" | "mid" | "low" | "over";
+}
+
+/** タンパク質の充足度(達成率)を言葉にする */
+export function proteinStatus(pct: number): RoughStatus {
+  if (pct >= 1) return { label: "バッチリ！", tone: "good" };
+  if (pct >= 0.6) return { label: "いい感じ", tone: "good" };
+  if (pct >= 0.3) return { label: "あと少し", tone: "mid" };
+  if (pct > 0) return { label: "もっと欲しい", tone: "low" };
+  return { label: "これから", tone: "low" };
+}
+
+/** カロリーの摂れ具合(目標比)を言葉にする。目標は増量/減量/維持を織り込み済み */
+export function calorieStatus(ratio: number): RoughStatus {
+  if (ratio <= 0) return { label: "これから", tone: "low" };
+  if (ratio < 0.6) return { label: "まだ食べてOK", tone: "low" };
+  if (ratio <= 1.15) return { label: "いいペース", tone: "good" };
+  return { label: "そろそろ十分", tone: "over" };
+}
+
 export interface Condition {
   /** 0..100 のコンディションスコア */
   score: number;
@@ -51,36 +79,37 @@ export function computeCondition(meals: MealLog[], profile: Profile): Condition 
   const totals = sumMeals(meals);
   const pGoal = proteinGoal(profile.weightKg);
   const proteinPct = pGoal > 0 ? totals.protein / pGoal : 0;
-
-  // タンパク質スコア(達成率100%で満点80、超過は頭打ち)
-  const proteinScore = Math.min(1, proteinPct) * 80;
-
-  // カロリーの収まり具合(目標±15%以内なら満点20)
-  const cGoal = calorieGoal(profile);
-  const calRatio = cGoal > 0 ? Math.abs(totals.calories - cGoal) / cGoal : 1;
-  const calorieScore = Math.max(0, 1 - calRatio / 0.5) * 20;
-
-  // まだ何も食べていない日は中立(ペナルティを与えない)
   const hasData = meals.length > 0;
-  const score = hasData ? Math.round(proteinScore + calorieScore) : 50;
 
-  // EXP補正: スコア 0→-10%, 50→±0%, 100→+15%
-  const expModifier = hasData ? 1 + (score - 50) / 100 * (score >= 50 ? 0.3 : 0.2) : 1;
+  // 初心者の習慣化が最優先(DESIGN.md)。だから食事の記録は「するほど得」にし、
+  // 絶対にデバフにしない。正直に記録した朝食が『何も記録しない』より損になる
+  // ような逆インセンティブを作らないための設計:
+  //   - 1食でも記録した      → +3%(記録行動そのものへのご褒美)
+  //   - タンパク質の達成度   → 最大 +12%(体重×1.6gで満点)。未達は「ボーナスが
+  //                             小さいだけ」で、減点はしない
+  // カロリーはEXP補正に使わない。1日の途中で目標に届いていないのは当然で、
+  // それを減点にすると正直な記録が損になるため(表示のざっくりゲージのみで扱う)。
+  const habitBonus = hasData ? 0.03 : 0;
+  const proteinBonus = Math.min(1, Math.max(0, proteinPct)) * 0.12;
+  const expModifier = 1 + habitBonus + proteinBonus; // 常に 1.0 以上(下限=±0%)
 
-  let label = "ふつう";
-  let emoji = "😐";
-  if (!hasData) {
-    label = "未記録";
-    emoji = "🍽️";
-  } else if (score >= 80) {
-    label = "絶好調";
-    emoji = "🔥";
-  } else if (score >= 60) {
-    label = "好調";
-    emoji = "😎";
-  } else if (score < 35) {
-    label = "栄養不足";
-    emoji = "😪";
+  // 内部指標としてのスコア(タンパク質達成度 0..100)。数値は前面に出さない。
+  const score = Math.round(Math.min(1, Math.max(0, proteinPct)) * 100);
+
+  let label = "未記録";
+  let emoji = "🍽️";
+  if (hasData) {
+    if (proteinPct >= 1) {
+      label = "絶好調";
+      emoji = "🔥";
+    } else if (proteinPct >= 0.6) {
+      label = "好調";
+      emoji = "😎";
+    } else {
+      // 記録できている時点で前向きに。栄養「不足」というネガティブ表現はしない
+      label = "その調子";
+      emoji = "🙂";
+    }
   }
 
   return {

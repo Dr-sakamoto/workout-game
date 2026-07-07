@@ -132,6 +132,12 @@ export default function App() {
   const todaySleepLogged = sleepLogs.some((l) => l.date === todayKey());
   const showSleepPopup = !!profile && !todaySleepLogged && !sleepPopupDismissed;
 
+  // タブ移動に軽いクリック音を添える(同じタブなら鳴らさない)
+  const selectTab = (next: Tab) => {
+    if (next !== tab) soundEngine.play("click");
+    setTab(next);
+  };
+
   useSoundEffects();
 
   useEffect(() => {
@@ -153,10 +159,10 @@ export default function App() {
       <div className="topbar">
         <span className="title">▸ {profile.name}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button className="coin-btn gear-btn" onClick={() => setSettingsOpen(true)}>
+          <button className="coin-btn gear-btn" onClick={() => { soundEngine.play("click"); setSettingsOpen(true); }}>
             ⚙
           </button>
-          <button className="coin coin-btn" onClick={() => setShopOpen(true)}>
+          <button className="coin coin-btn" onClick={() => { soundEngine.play("click"); setShopOpen(true); }}>
             🪙 {gold} ▸ 🏪
           </button>
         </div>
@@ -169,19 +175,19 @@ export default function App() {
       {tab === "quest" && <QuestScreen />}
 
       <nav className="tabbar">
-        <button className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
+        <button className={tab === "home" ? "active" : ""} onClick={() => selectTab("home")}>
           <span className="ico">🧍</span>アバター
         </button>
-        <button className={tab === "train" ? "active" : ""} onClick={() => setTab("train")}>
+        <button className={tab === "train" ? "active" : ""} onClick={() => selectTab("train")}>
           <span className="ico">🏋️</span>トレ
         </button>
-        <button className={tab === "meal" ? "active" : ""} onClick={() => setTab("meal")}>
+        <button className={tab === "meal" ? "active" : ""} onClick={() => selectTab("meal")}>
           <span className="ico">🍽️</span>食事
         </button>
-        <button className={tab === "boss" ? "active" : ""} onClick={() => setTab("boss")}>
+        <button className={tab === "boss" ? "active" : ""} onClick={() => selectTab("boss")}>
           <span className="ico">⚔️</span>バトル
         </button>
-        <button className={tab === "quest" ? "active" : ""} onClick={() => setTab("quest")}>
+        <button className={tab === "quest" ? "active" : ""} onClick={() => selectTab("quest")}>
           <span className="ico">📜</span>クエスト
         </button>
       </nav>
