@@ -162,7 +162,7 @@ export function AvatarPanel() {
         <div className="condition" style={{ marginTop: 14 }}>
           <span className="big">{condition.emoji}</span>
           <div>
-            <div>{condition.label}（スコア {condition.score}）</div>
+            <div>{condition.label}</div>
             <div className={condition.expModifier >= 1 ? "mod-up" : "mod-down"}>
               食事補正 {condition.expModifier >= 1 ? "+" : ""}{Math.round((condition.expModifier - 1) * 100)}%
             </div>

@@ -96,9 +96,24 @@ describe("meal condition", () => {
     expect(c.expModifier).toBeGreaterThan(1);
   });
 
-  it("栄養不足はデバフになる", () => {
+  it("正直に記録してもデバフにならない(記録は必ず±0%以上)", () => {
+    // 少ししか食べていない日でも、記録した時点で『未記録』より損はしない
+    const little = computeCondition([meal(10, 300)], profile);
+    expect(little.expModifier).toBeGreaterThanOrEqual(1);
+    // むしろ記録行動のぶん、未記録(±0%)より少しだけ得
+    const none = computeCondition([], profile);
+    expect(little.expModifier).toBeGreaterThan(none.expModifier);
+  });
+
+  it("タンパク質を多く摂るほどボーナスが大きい(単調)", () => {
+    const low = computeCondition([meal(20, 500)], profile);
+    const high = computeCondition([meal(110, 500)], profile);
+    expect(high.expModifier).toBeGreaterThan(low.expModifier);
+  });
+
+  it("栄養不足でもネガティブなラベルにはしない", () => {
     const c = computeCondition([meal(10, 300)], profile);
-    expect(c.expModifier).toBeLessThan(1);
+    expect(c.label).not.toContain("不足");
   });
 });
 
