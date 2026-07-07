@@ -80,6 +80,9 @@ export interface Profile {
   heightCm: number;
   weightKg: number;
   goal: Goal;
+  /** 週間トレーニング予定日(0=日〜6=土)。ストリークはこの予定日基準で判定する。
+   *  未設定の既存プロフィールは既定スケジュール(週3)として扱う。 */
+  trainingDays?: number[];
 }
 
 export interface Avatar {

@@ -4,6 +4,13 @@ import { addExp, createAvatar, expForLevel } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
 import { computeCondition, proteinStatus, calorieStatus } from "./meals";
 import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
+import {
+  advanceScheduleStreak,
+  missedScheduledDays,
+  isScheduledDay,
+  effectiveSchedule,
+  scheduleLabel,
+} from "./schedule";
 import { INITIAL_STATS } from "./avatar";
 import { EXERCISE_MAP } from "./exercises";
 import { bossAt, BOSSES } from "./bosses";
@@ -164,6 +171,51 @@ describe("simple meal (かんたん記録の推定)", () => {
   it("自動ラベルは選択内容が分かる名前になる", () => {
     expect(simpleMealName("solid", "normal")).toContain("しっかり");
     expect(simpleMealName("none", "light")).toContain("軽め");
+  });
+});
+
+describe("スケジュール基準のストリーク", () => {
+  // 2024-01-01(月) / 03(水) / 05(金) / 08(月)。予定は月・水・金。
+  const MWF = [1, 3, 5];
+
+  it("予定日が判定できる", () => {
+    expect(isScheduledDay("2024-01-01", MWF)).toBe(true); // 月
+    expect(isScheduledDay("2024-01-02", MWF)).toBe(false); // 火(休養日)
+    expect(isScheduledDay("2024-01-03", MWF)).toBe(true); // 水
+  });
+
+  it("予定日を連続でこなすと伸びる", () => {
+    let s = { count: 0, lastDate: null as string | null };
+    s = advanceScheduleStreak(s, "2024-01-01", MWF); // 月
+    expect(s.count).toBe(1);
+    s = advanceScheduleStreak(s, "2024-01-03", MWF); // 水
+    expect(s.count).toBe(2);
+    s = advanceScheduleStreak(s, "2024-01-05", MWF); // 金
+    expect(s.count).toBe(3);
+  });
+
+  it("予定日を飛ばすと1にリセットされる", () => {
+    // 月にトレ → 水を飛ばして金にトレ → 継続は切れて1
+    let s = advanceScheduleStreak({ count: 3, lastDate: "2024-01-01" }, "2024-01-05", MWF);
+    expect(s.count).toBe(1);
+  });
+
+  it("休養日(予定外)のトレは判定に関与しない=missedに数えない", () => {
+    // 月にトレ、火(休養日)は無視。今日が水でまだ未トレでも、間の予定日欠落はゼロ
+    const missed = missedScheduledDays("2024-01-01", "2024-01-03", MWF, new Set(["2024-01-01"]));
+    expect(missed).toBe(0);
+  });
+
+  it("予定日を飛ばした分だけmissedになる", () => {
+    // 月にトレ→今日は金。間の水(予定日)を飛ばしている → missed 1
+    const missed = missedScheduledDays("2024-01-01", "2024-01-05", MWF, new Set(["2024-01-01"]));
+    expect(missed).toBe(1);
+  });
+
+  it("未設定スケジュールは既定(週3)にフォールバックし、表示できる", () => {
+    expect(effectiveSchedule(undefined)).toEqual([1, 3, 5]);
+    expect(effectiveSchedule([2])).toEqual([2]);
+    expect(scheduleLabel([1, 3, 5])).toBe("月・水・金");
   });
 });
 

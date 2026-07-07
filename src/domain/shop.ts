@@ -22,7 +22,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   {
     id: "streakShield",
     name: "守りのプロテイン",
-    desc: "1日サボってもストリークが途切れない(在庫として持てる)",
+    desc: "予定日を1回逃してもストリークが途切れない(在庫として持てる)",
     emoji: "🥛",
     cost: 50,
   },

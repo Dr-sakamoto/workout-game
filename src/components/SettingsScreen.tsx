@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { useGameStore } from "../store/useGameStore";
 import { soundEngine } from "../sounds/soundEngine";
+import { SCHEDULE_PRESETS, effectiveSchedule } from "../domain/schedule";
 
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [seOn, setSeOn] = useState(soundEngine.seOn);
   const [confirmReset, setConfirmReset] = useState(false);
   const resetAll = useGameStore((s) => s.resetAll);
+  const profile = useGameStore((s) => s.profile);
+  const changeSchedule = useGameStore((s) => s.changeSchedule);
+  const currentDays = effectiveSchedule(profile?.trainingDays);
+  const currentId =
+    SCHEDULE_PRESETS.find((s) => s.days.join(",") === [...currentDays].sort((a, b) => a - b).join(","))?.id ?? "";
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -32,6 +38,27 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
               <span className="toggle-track" />
             </span>
           </label>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">トレーニングの頻度</div>
+          <p className="hint" style={{ marginBottom: 8 }}>
+            予定日にトレするとストリークが伸びる。基本は据え置きでコツコツと。
+          </p>
+          <div className="sched-grid">
+            {SCHEDULE_PRESETS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`sched-card ${currentId === s.id ? "active" : ""}`}
+                onClick={() => { changeSchedule(s.days); soundEngine.play("select"); }}
+              >
+                <span className="sched-emoji">{s.emoji}</span>
+                <span className="sched-label">{s.label}</span>
+                <span className="sched-desc">{s.desc}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="settings-section">
