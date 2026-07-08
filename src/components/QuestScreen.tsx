@@ -1,6 +1,6 @@
 import { useGameStore, selectToday, selectProgress, ACHIEVEMENTS, todayKey } from "../store/useGameStore";
 import { EXERCISE_MAP } from "../domain/exercises";
-import { effectiveSchedule, scheduleLabel, isScheduledDay } from "../domain/schedule";
+import { effectiveSchedule, scheduleLabel, isScheduledDay, isEveryday } from "../domain/schedule";
 
 export function QuestScreen() {
   const claimQuest = useGameStore((s) => s.claimQuest);
@@ -10,6 +10,7 @@ export function QuestScreen() {
   const records = useGameStore((s) => s.records);
   const sched = effectiveSchedule(profile?.trainingDays);
   const isTrainingDay = isScheduledDay(todayKey(), sched);
+  const everyday = isEveryday(sched);
   const progress = useGameStore(selectProgress);
   const claimedAch = useGameStore((s) => s.claimedAchievements);
   const { quests, claimed } = useGameStore(selectToday);
@@ -33,8 +34,13 @@ export function QuestScreen() {
           {streak.count} 回連続
         </div>
         <p className="hint" style={{ textAlign: "center" }}>
-          予定日（{scheduleLabel(sched)}）にトレーニングすると連続記録が伸びる。<br />
-          予定日を飛ばすと途切れるが、休養日は数えないので安心して休める。
+          {everyday ? (
+            <>毎日プラン。休養日なしで、鍛えるたびに連続記録が伸びる。<br />
+              軽めの自重を習慣にするのに向いている。</>
+          ) : (
+            <>予定日（{scheduleLabel(sched)}）にトレーニングすると連続記録が伸びる。<br />
+              予定日を飛ばすと途切れるが、休養日は数えないので安心して休める。</>
+          )}
         </p>
         <div className={`sched-today ${isTrainingDay ? "on" : ""}`}>
           {isTrainingDay ? "💪 今日は予定日！鍛えてストリークを伸ばそう" : "🛌 今日は休養日。無理せず回復も大事"}

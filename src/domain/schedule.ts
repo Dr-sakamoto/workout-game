@@ -17,14 +17,26 @@ export interface SchedulePreset {
 }
 
 // 初心者にはこちらから提案する(本人にゼロから組ませない)。既定は週3。
+//
+// 休養日の要否は「強度」で決まる(DESIGN.md/schedule冒頭コメント参照)。
+// 限界まで追い込むメニューは超回復のため休養日を挟んだ方が伸びるが、
+// 「腕立て20回」程度の軽い自重を習慣化したい人には休養日はむしろ邪魔。
+// そこで軽め派の受け皿として週6・毎日(週7=休養日ゼロ)も用意する。
 export const SCHEDULE_PRESETS: SchedulePreset[] = [
   { id: "w2", label: "週2", emoji: "🌱", days: [1, 4], desc: "月・木。まずは習慣づけから" },
-  { id: "w3", label: "週3", emoji: "🔥", days: [1, 3, 5], desc: "月・水・金。初心者に一番おすすめ" },
+  { id: "w3", label: "週3", emoji: "🔥", days: [1, 3, 5], desc: "月・水・金。追い込むならコレ(休養◎)" },
   { id: "w4", label: "週4", emoji: "💪", days: [1, 2, 4, 5], desc: "月・火・木・金。しっかり鍛える" },
   { id: "w5", label: "週5", emoji: "🦾", days: [1, 2, 3, 4, 5], desc: "平日は毎日。本格派" },
+  { id: "w6", label: "週6", emoji: "⚡", days: [1, 2, 3, 4, 5, 6], desc: "日曜だけ休む。軽め〜中強度向き" },
+  { id: "w7", label: "毎日", emoji: "🔆", days: [0, 1, 2, 3, 4, 5, 6], desc: "休養日なし。軽い自重を毎日の習慣に" },
 ];
 
 export const DEFAULT_SCHEDULE = [1, 3, 5]; // 週3
+
+/** 休養日を持たない(全曜日が予定日=毎日)スケジュールか */
+export function isEveryday(days: number[]): boolean {
+  return days.length >= 7;
+}
 
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
