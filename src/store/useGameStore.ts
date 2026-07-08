@@ -50,6 +50,9 @@ import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
 /** localStorage の保存キー。バックアップの書き出し/読み込みでも使う */
 export const STORAGE_KEY = "workout-game-v1";
 
+/** persist のスキーマバージョン。フィールドを増減したら上げる(migrate が走る) */
+export const STORE_VERSION = 1;
+
 export function todayKey(d = new Date()): string {
   // ローカル時刻基準の YYYY-MM-DD。
   // toISOString() は UTC なので、JST等では日付の境目がズレる(深夜0時でなく朝9時)。
@@ -621,7 +624,27 @@ export const useGameStore = create<GameState>()(
 
       resetAll: () => set({ profile: null, ...FRESH }),
     }),
-    { name: STORAGE_KEY },
+    {
+      name: STORAGE_KEY,
+      version: STORE_VERSION,
+      // スキーマ変更に耐える移行。旧バージョン(またはキー欠落)の保存データに
+      // 対し、FRESH の初期値を土台にして永続化された値を上書きする。これにより
+      // 新しく追加したフィールド(例: sleepPopupDate)が undefined になって
+      // 実行時エラーやゲーム崩壊を起こすのを防ぐ。プロフィールなどユーザー資産は
+      // そのまま保持される。
+      migrate: (persisted, _version) => {
+        const p = (persisted ?? {}) as Partial<GameState>;
+        return {
+          ...FRESH,
+          ...p,
+          // ネストしたオブジェクトも欠落キーを初期値で補う
+          streak: { ...FRESH.streak, ...(p.streak ?? {}) },
+          records: { ...FRESH.records, ...(p.records ?? {}) },
+          boss: { ...FRESH.boss, ...(p.boss ?? {}) },
+          partVolumes: { ...FRESH.partVolumes, ...(p.partVolumes ?? {}) },
+        } as GameState;
+      },
+    },
   ),
 );
 
