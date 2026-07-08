@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useGameStore, selectToday } from "../store/useGameStore";
 import { computeCondition, sumMeals, proteinGoal, calorieGoal, proteinStatus, calorieStatus } from "../domain/meals";
 import type { MealLog, MealSlot } from "../domain/types";
@@ -12,7 +12,11 @@ import {
   type ProteinLevel,
   type MealSize,
 } from "../domain/simpleMeal";
-import { BarcodeScanner } from "./BarcodeScanner";
+// バーコードスキャナは zxing(重量級)を抱えるので遅延ロードする。
+// スキャンを開いた時だけ読み込み、初回表示のバンドルを軽くする(D-1)。
+const BarcodeScanner = lazy(() =>
+  import("./BarcodeScanner").then((m) => ({ default: m.BarcodeScanner })),
+);
 
 // 「よく食べる物」に出すための最低記録回数。固定プリセットは置かず、
 // 本人の履歴が育ってから初めて意味のある提案をする。
@@ -140,7 +144,20 @@ export function MealScreen() {
   return (
     <div className="screen">
       {showScanner && (
-        <BarcodeScanner onResult={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+        <Suspense
+          fallback={
+            <div className="barcode-overlay">
+              <div className="barcode-modal">
+                <div className="barcode-loading">
+                  <div className="spinner" />
+                  <p>カメラを準備中…</p>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <BarcodeScanner onResult={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+        </Suspense>
       )}
       {editing && <MealEditModal meal={editing} onClose={() => setEditing(null)} />}
       <div className="panel">
