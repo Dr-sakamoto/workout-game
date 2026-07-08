@@ -612,6 +612,8 @@ input, select {
   border-left-color: #ff5858;
 }
 .penalty-header { color: var(--red); font-size: 11px; margin-bottom: 10px; }
+.comeback-header { color: var(--green); font-size: 12px; margin-bottom: 10px; }
+.comeback-hint { font-family: var(--body); font-size: 14px; color: var(--ink); line-height: 1.5; }
 .penalty-missed { font-family: var(--body); font-size: 15px; color: var(--ink); margin-bottom: 8px; }
 .penalty-dmg { color: var(--red); font-size: 18px; margin: 4px 0 2px; }
 .penalty-total { font-family: var(--body); font-size: 15px; color: var(--red); margin-bottom: 10px; }
