@@ -139,6 +139,7 @@ interface GameState {
   playerHp: number; // 現在HP。サボると減り、トレで回復する
   lastDailyCheckDate: string | null; // 日次ペナルティ処理済みの日付
   lastPenalty: PenaltyInfo | null; // 表示用ペナルティ情報
+  sleepPopupDate: string | null; // 睡眠ポップアップを表示済み(=「あとで」済み)の日付
 
   initProfile: (p: Profile) => void;
   setBodyFat: (n: number) => void;
@@ -150,6 +151,7 @@ interface GameState {
   updateMeal: (id: string, patch: Partial<Omit<MealLog, "id" | "date">>) => void;
   deleteMeal: (id: string) => void;
   logSleep: (quality: SleepQuality) => void;
+  snoozeSleepPopup: () => void;
   claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
   claimAchievement: (id: string, rewardGold: number) => void;
   buyItem: (id: ItemEffect) => void;
@@ -182,6 +184,7 @@ const FRESH = {
   playerHp: maxHp(INITIAL_STATS), // 60
   lastDailyCheckDate: null as string | null,
   lastPenalty: null as PenaltyInfo | null,
+  sleepPopupDate: null as string | null,
 };
 
 export const useGameStore = create<GameState>()(
@@ -477,6 +480,10 @@ export const useGameStore = create<GameState>()(
           ],
         }));
       },
+
+      // 「あとで」を永続化し、睡眠ポップアップの割り込みを1日1回までにする。
+      // 記録自体はホームのボタンからいつでもできる(§1「10秒で終わる軽さ」)。
+      snoozeSleepPopup: () => set({ sleepPopupDate: todayKey() }),
 
       logMeal: (meal) => {
         const state = get();

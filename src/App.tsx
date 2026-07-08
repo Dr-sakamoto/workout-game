@@ -127,13 +127,15 @@ export default function App() {
   const gold = useGameStore((s) => s.avatar.gold);
   const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
   const sleepLogs = useGameStore((s) => s.sleepLogs);
+  const sleepPopupDate = useGameStore((s) => s.sleepPopupDate);
+  const snoozeSleepPopup = useGameStore((s) => s.snoozeSleepPopup);
   const [tab, setTab] = useState<Tab>("home");
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sleepPopupDismissed, setSleepPopupDismissed] = useState(false);
 
   const todaySleepLogged = sleepLogs.some((l) => l.date === todayKey());
-  const showSleepPopup = !!profile && !todaySleepLogged && !sleepPopupDismissed;
+  // 全画面の割り込みは1日1回まで。「あとで」は永続化され、再起動で再表示しない
+  const showSleepPopup = !!profile && !todaySleepLogged && sleepPopupDate !== todayKey();
 
   // タブ移動に軽いクリック音を添える(同じタブなら鳴らさない)
   const selectTab = (next: Tab) => {
@@ -197,9 +199,7 @@ export default function App() {
 
       {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
       {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
-      {showSleepPopup && (
-        <SleepSurveyPopup onClose={() => setSleepPopupDismissed(true)} />
-      )}
+      {showSleepPopup && <SleepSurveyPopup onClose={snoozeSleepPopup} />}
       <PenaltyToast />
       <RewardToast />
     </div>
