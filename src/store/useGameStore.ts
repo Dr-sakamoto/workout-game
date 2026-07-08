@@ -47,6 +47,9 @@ import {
 import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
 import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
 
+/** localStorage の保存キー。バックアップの書き出し/読み込みでも使う */
+export const STORAGE_KEY = "workout-game-v1";
+
 export function todayKey(d = new Date()): string {
   // ローカル時刻基準の YYYY-MM-DD。
   // toISOString() は UTC なので、JST等では日付の境目がズレる(深夜0時でなく朝9時)。
@@ -618,7 +621,7 @@ export const useGameStore = create<GameState>()(
 
       resetAll: () => set({ profile: null, ...FRESH }),
     }),
-    { name: "workout-game-v1" },
+    { name: STORAGE_KEY },
   ),
 );
 
