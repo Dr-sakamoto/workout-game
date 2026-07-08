@@ -433,6 +433,16 @@ input, select {
 .btn-danger { color: #e05252; border-color: #6b2323; }
 
 /* ---- トレーニングスケジュール ---- */
+.sched-guide {
+  border: 2px dashed var(--line); background: var(--panel-2);
+  padding: 10px; margin: 0 0 10px;
+  font-family: var(--body); font-size: 12px; line-height: 1.5; color: var(--muted);
+}
+.sched-guide p { margin: 0 0 6px; }
+.sched-guide p:last-child { margin-bottom: 0; }
+.sched-guide b { color: var(--fg); }
+.sched-guide-title { color: var(--amber); font-size: 13px; }
+.sched-guide-note { opacity: 0.85; }
 .sched-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .sched-card {
   display: flex; flex-direction: column; gap: 3px; text-align: left;

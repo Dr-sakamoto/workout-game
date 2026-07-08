@@ -82,9 +82,23 @@ export function Onboarding() {
 
           <label>トレーニングの頻度</label>
           <p className="hint" style={{ margin: "2px 0 8px" }}>
-            週に何回鍛える? この予定日にトレするとストリークが伸びる。休養日は途切れの対象外。
+            週に何回鍛える? この予定日にトレするとストリークが伸びる。
             （あとから変えられるが、基本は据え置きでコツコツと）
           </p>
+          <div className="sched-guide">
+            <p className="sched-guide-title">💡 休養日って必要? 迷ったらここで判断</p>
+            <p>
+              <b>軽め</b>（腕立て20回くらいで余裕がある）→ 回復はすぐ追いつく。
+              <b>毎日〜週6でOK</b>、続けるほど伸びる。
+            </p>
+            <p>
+              <b>ガチで追い込む</b>（自重でも限界レップ・きついフォーム）→ 筋肉の回復に1〜2日必要。
+              休養日を挟む<b>週3〜4がおすすめ</b>。
+            </p>
+            <p className="sched-guide-note">
+              迷う初心者はまず「毎日」でハードルを下げてもいい。きつくなってきたら頻度を落とせる。
+            </p>
+          </div>
           <div className="sched-grid">
             {SCHEDULE_PRESETS.map((s) => (
               <button
