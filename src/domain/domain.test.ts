@@ -3,6 +3,7 @@ import { computeStrengthExp, computeCardioExp, computeGold } from "./expEngine";
 import { addExp, createAvatar, expForLevel, levelStateFromTotalExp } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
 import { computeCondition, proteinStatus, calorieStatus } from "./meals";
+import { evaluateDailyQuests, questProteinGoal } from "./quests";
 import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
 import {
   advanceScheduleStreak,
@@ -303,5 +304,37 @@ describe("parts (部位別レベル)", () => {
     const heavy = computeBuild(160, 95, undefined, "front");
     expect(skinny.girth).toBeLessThan(heavy.girth);
     expect(overallMuscle(skinny.parts)).toBe(0);
+  });
+});
+
+describe("daily quests", () => {
+  const profile: Profile = { name: "t", heightCm: 170, weightKg: 70, goal: "keep", trainingDays: [1, 3, 5] };
+
+  it("タンパク質目標はレベルで段階的に上がる(×1.2→×1.4→×1.6)", () => {
+    expect(questProteinGoal(70, 1)).toBe(Math.round(70 * 1.2)); // 84
+    expect(questProteinGoal(70, 5)).toBe(Math.round(70 * 1.4)); // 98
+    expect(questProteinGoal(70, 10)).toBe(Math.round(70 * 1.6)); // 112
+    // 単調増加(下がらない)
+    expect(questProteinGoal(70, 4)).toBeLessThanOrEqual(questProteinGoal(70, 5));
+    expect(questProteinGoal(70, 9)).toBeLessThanOrEqual(questProteinGoal(70, 10));
+  });
+
+  it("記録するだけの低ハードル枠(トレ1回・食事1回)を毎日必ず含む", () => {
+    const quests = evaluateDailyQuests([], [], profile, 1);
+    const ids = quests.map((q) => q.id);
+    expect(ids).toContain("train_today");
+    expect(ids).toContain("log_meal");
+    // トレ・食事を1回ずつ記録したら低ハードル枠は両方達成できる
+    const w = [{ id: "1", date: "2026-07-08", exerciseId: "bench", exerciseName: "", category: "chest" as const, sets: [], baseExp: 1, earnedExp: 1, earnedGold: 1, statGains: {} }];
+    const m: MealLog[] = [{ id: "1", date: "2026-07-08", name: "卵", protein: 6, fat: 5, carb: 0, calories: 70 }];
+    const done = evaluateDailyQuests(w, m, profile, 1);
+    expect(done.find((q) => q.id === "train_today")!.done).toBe(true);
+    expect(done.find((q) => q.id === "log_meal")!.done).toBe(true);
+  });
+
+  it("クエストのタンパク質目標がレベルに追従する", () => {
+    const lvl1 = evaluateDailyQuests([], [], profile, 1).find((q) => q.id === "protein_goal")!;
+    const lvl10 = evaluateDailyQuests([], [], profile, 10).find((q) => q.id === "protein_goal")!;
+    expect(lvl10.target).toBeGreaterThan(lvl1.target);
   });
 });

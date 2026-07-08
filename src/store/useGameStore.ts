@@ -632,7 +632,7 @@ export function selectToday(state: GameState) {
   const meals = state.mealLogs.filter((m) => m.date === today);
   const sleep = state.sleepLogs.find((s) => s.date === today) ?? null;
   const quests = state.profile
-    ? evaluateDailyQuests(workouts, meals, state.profile)
+    ? evaluateDailyQuests(workouts, meals, state.profile, state.avatar.level)
     : [];
   const claimed = state.claimedQuestsByDate[today] ?? [];
   return { today, workouts, meals, sleep, quests, claimed };
