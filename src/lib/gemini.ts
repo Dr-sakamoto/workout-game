@@ -1,6 +1,3 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
-
 export interface GeminiNutrition {
   protein: number;
   fat: number;
@@ -8,43 +5,33 @@ export interface GeminiNutrition {
   calories: number;
 }
 
-function imageToBase64Part(dataUrl: string) {
-  const [header, data] = dataUrl.split(",");
-  const mimeType = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
-  return { inlineData: { mimeType, data } };
-}
-
-// 栄養成分表示の写真だけを読み取る。商品名は常にコミュニティDB／
-// 正規名DB／ユーザー入力のいずれかから得るため、AIには推測させない
-// （名前をAIに任せるとユーザーごとの表記ゆれが生まれてしまう）。
+// 栄養成分表示の写真から PFC・カロリーを読み取る。API キーをクライアントに
+// 露出させないため、Vercel サーバーレス関数(api/gemini-nutrition.ts)経由で
+// Gemini を呼ぶ。商品名は常にコミュニティDB／正規名DB／ユーザー入力から得る
+// (名前をAIに任せるとユーザーごとの表記ゆれが生まれるため、AIには推測させない)。
+//
+// 注意: このエンドポイントは Vercel Functions。`vite` のローカル開発サーバーには
+// 存在しないため、開発中は `vercel dev` を使うかデプロイ環境で確認すること。
 export async function analyzeNutritionLabel(backDataUrl: string): Promise<GeminiNutrition> {
-  const prompt = `この商品パッケージの栄養成分表示の画像を見て、以下をJSONで返してください。
-- protein: タンパク質(g) ※1食分または100gあたり
-- fat: 脂質(g)
-- carb: 炭水化物(g)
-- calories: カロリー(kcal)
-
-必ず純粋なJSONのみを返してください。コードブロックや説明は不要です。
-例: {"protein":2.1,"fat":8.3,"carb":12.4,"calories":131}`;
-
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch("/api/gemini-nutrition", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [imageToBase64Part(backDataUrl), { text: prompt }] }],
-      generationConfig: { temperature: 0 },
-    }),
+    body: JSON.stringify({ image: backDataUrl }),
   });
 
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  try {
-    return JSON.parse(text.trim());
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error("Gemini の返答をパースできませんでした");
+  if (!res.ok) {
+    let reason = String(res.status);
+    try {
+      const err = await res.json();
+      if (err?.error) reason = err.error;
+    } catch {
+      /* JSON でないエラー応答はステータスコードのまま */
+    }
+    if (reason === "unconfigured") {
+      throw new Error("栄養解析が未設定です（サーバーにAPIキーがありません）。手入力で記録してください。");
+    }
+    throw new Error(`栄養成分を読み取れませんでした（${reason}）`);
   }
+
+  return res.json();
 }
