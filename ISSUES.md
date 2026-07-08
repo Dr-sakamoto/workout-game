@@ -31,11 +31,14 @@
   全ユーザーの記録・コンディション計算に直行していた。
   → クライアント側で参照時・登録時の両方に値のクランプ（0〜上限・非数排除）を追加。
   根本対応は Supabase 側の RLS / CHECK 制約（要ダッシュボード作業）。
-- [ ] **B-3 デプロイ先のねじれ**
-  デプロイは GitHub Pages なのに `api/yahoo-jan.ts` は Vercel Functions。
-  本番では `/api/yahoo-jan` が常に 404 → Yahoo 商品名検索が機能していない
-  （Open Food Facts フォールバックのみ生存）。B-1 と合わせて Vercel への
-  一本化が自然。**オーナー判断待ち**。
+- [ ] **B-3 デプロイ先が2つ併存している**
+  GitHub Pages（`.github/workflows/deploy.yml`）と Vercel（PRプレビューも
+  デプロイされている）の両方に配信されている。Pages 側にはサーバーが無いため
+  `/api/yahoo-jan` が常に 404 → Yahoo 商品名検索が機能しない（Open Food Facts
+  フォールバックのみ生存）。Vercel 側では機能する。ユーザーがどちらのURLを
+  使うかで挙動が変わるのは危険なので、Vercel へ一本化して Pages ワークフローを
+  廃止するのが自然（B-1 のAPIキー秘匿もVercel Functionsで解決できる）。
+  **オーナー判断待ち**。
 
 ## C. ゲームデザイン／UX（UX_AUDIT 未対応分）
 
