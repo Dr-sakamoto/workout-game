@@ -6,11 +6,19 @@ import type {
   Profile,
   SleepLog,
   SleepQuality,
+  StatKey,
   Stats,
   WorkoutLog,
   WorkoutSet,
+  WorkoutUndo,
 } from "../domain/types";
-import { createAvatar, addExp, INITIAL_STATS, maxHp } from "../domain/avatar";
+import {
+  createAvatar,
+  addExp,
+  levelStateFromTotalExp,
+  INITIAL_STATS,
+  maxHp,
+} from "../domain/avatar";
 import { EXERCISE_MAP } from "../domain/exercises";
 import {
   computeBaseExp,
@@ -137,6 +145,7 @@ interface GameState {
   changeSchedule: (days: number[]) => void;
   toggleFavorite: (exerciseId: string) => void;
   logWorkout: (exerciseId: string, input: { sets?: WorkoutSet[]; minutes?: number }) => void;
+  undoWorkout: (logId: string) => void;
   logMeal: (meal: Omit<MealLog, "id" | "date">) => void;
   updateMeal: (id: string, patch: Partial<Omit<MealLog, "id" | "date">>) => void;
   deleteMeal: (id: string) => void;
@@ -353,11 +362,28 @@ export const useGameStore = create<GameState>()(
         // --- HPの回復: トレーニングするとHPが戻る ---
         const newMaxHp = maxHp(avatar.stats);
         const hpRecovery = Math.floor(earnedExp / 4);
-        const playerHp = Math.min(newMaxHp, (state.playerHp ?? newMaxHp) + hpRecovery);
+        const hpBefore = state.playerHp ?? maxHp(state.avatar.stats);
+        const playerHp = Math.min(newMaxHp, hpBefore + hpRecovery);
+
+        // 取り消し用スナップショット(この記録が動かした状態の巻き戻し情報)
+        const undo: WorkoutUndo = {
+          streak: { ...state.streak },
+          boss: { ...state.boss },
+          defeatedBoss: !!bossDefeated,
+          bossGold,
+          bossExp,
+          partGain,
+          playerHp: hpBefore,
+          prevBestVolume: prevVolBest,
+          prevBestDayExp: records.bestDayExp,
+          prevBestStreak: records.bestStreak,
+          expBoostUsed,
+          shieldUsed,
+        };
 
         set({
           avatar,
-          workoutLogs: [log, ...state.workoutLogs],
+          workoutLogs: [{ ...log, undo }, ...state.workoutLogs],
           streak: { count: streakRes.count, lastDate: streakRes.lastDate },
           streakShields,
           expBoostCharges,
@@ -383,6 +409,62 @@ export const useGameStore = create<GameState>()(
             expBoostUsed,
             source: "workout",
           },
+        });
+      },
+
+      // 直近のトレ記録の取り消し(タイプミス対策)。安全に巻き戻せる条件を
+      // 「当日の・最新の1件」に限定する。それより古い記録は、間に他の記録や
+      // 日次ペナルティが挟まりスナップショットの整合が保証できないため対象外。
+      undoWorkout: (logId) => {
+        const state = get();
+        const log = state.workoutLogs[0];
+        if (!log || log.id !== logId || !log.undo) return;
+        if (log.date !== todayKey()) return;
+        const u = log.undo;
+
+        // ステータスとレベル(レベルは累計EXPから決定的に復元できる)
+        const negGains: Partial<Stats> = {};
+        (Object.keys(log.statGains) as StatKey[]).forEach((k) => {
+          negGains[k] = -(log.statGains[k] ?? 0);
+        });
+        const stats = addStats(state.avatar.stats, negGains);
+        const avatar: Avatar = {
+          ...state.avatar,
+          ...levelStateFromTotalExp(state.avatar.totalExp - log.earnedExp - u.bossExp),
+          stats,
+          // 記録後にゴールドを使っていた場合はマイナスになりうるので0で止める
+          gold: Math.max(0, state.avatar.gold - log.earnedGold - u.bossGold),
+        };
+
+        const partKey = categoryToPart(log.category);
+        const partVolumes: PartVolumes = {
+          ...state.partVolumes,
+          [partKey]: Math.max(0, state.partVolumes[partKey] - u.partGain),
+        };
+
+        const records: Records = {
+          bestVolumeByExercise: { ...state.records.bestVolumeByExercise },
+          bestDayExp: u.prevBestDayExp,
+          bestStreak: u.prevBestStreak,
+        };
+        if (u.prevBestVolume > 0) {
+          records.bestVolumeByExercise[log.exerciseId] = u.prevBestVolume;
+        } else {
+          delete records.bestVolumeByExercise[log.exerciseId];
+        }
+
+        set({
+          avatar,
+          workoutLogs: state.workoutLogs.slice(1),
+          streak: { ...u.streak },
+          boss: { ...u.boss },
+          bossesDefeated: state.bossesDefeated - (u.defeatedBoss ? 1 : 0),
+          partVolumes,
+          records,
+          playerHp: Math.min(u.playerHp, maxHp(stats)),
+          expBoostCharges: state.expBoostCharges + (u.expBoostUsed ? 1 : 0),
+          streakShields: state.streakShields + (u.shieldUsed ? 1 : 0),
+          lastReward: null,
         });
       },
 

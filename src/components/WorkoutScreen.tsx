@@ -60,6 +60,7 @@ function RestTimer({ endsAt, onAdd, onSkip, onDone }: {
 export function WorkoutScreen() {
   const profile = useGameStore((s) => s.profile)!;
   const logWorkout = useGameStore((s) => s.logWorkout);
+  const undoWorkout = useGameStore((s) => s.undoWorkout);
   const lastSets = useGameStore((s) => s.lastSetsByExercise);
   const lastMinutes = useGameStore((s) => s.lastMinutesByExercise);
   const allWorkouts = useGameStore((s) => s.workoutLogs);
@@ -84,6 +85,7 @@ export function WorkoutScreen() {
   const [sets, setSets] = useState<WorkoutSet[]>([{ weight: 40, reps: 10 }]);
   const [minutes, setMinutes] = useState(20);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [confirmUndoId, setConfirmUndoId] = useState<string | null>(null);
 
   const exercise = selected ? EXERCISE_MAP[selected] : null;
   const isCardio = exercise?.category === "cardio";
@@ -202,15 +204,42 @@ export function WorkoutScreen() {
         {workouts.length === 0 ? (
           <div className="empty">まだ記録なし。さあ鍛えよう。</div>
         ) : (
-          workouts.map((w) => (
-            <div className="log-item" key={w.id}>
-              <span>
-                {EXERCISE_MAP[w.exerciseId]?.emoji} {w.exerciseName}
-                {w.minutes ? ` ${w.minutes}分` : ` ${w.sets.length}セット`}
-              </span>
-              <span className="exp">+{w.earnedExp} EXP</span>
-            </div>
-          ))
+          workouts.map((w, i) => {
+            // 巻き戻しの整合が保証できる「当日の最新1件」だけ取り消せる
+            const canUndo = i === 0 && !!w.undo;
+            return (
+              <div className="log-item" key={w.id}>
+                <span>
+                  {EXERCISE_MAP[w.exerciseId]?.emoji} {w.exerciseName}
+                  {w.minutes ? ` ${w.minutes}分` : ` ${w.sets.length}セット`}
+                </span>
+                <span className="exp">
+                  +{w.earnedExp} EXP
+                  {canUndo && (
+                    <button
+                      className={`log-undo ${confirmUndoId === w.id ? "confirm" : ""}`}
+                      onClick={() => {
+                        if (confirmUndoId !== w.id) {
+                          setConfirmUndoId(w.id);
+                          return;
+                        }
+                        undoWorkout(w.id);
+                        setConfirmUndoId(null);
+                        soundEngine.play("delete");
+                      }}
+                    >
+                      {confirmUndoId === w.id ? "本当に取り消す？" : "取り消す"}
+                    </button>
+                  )}
+                </span>
+              </div>
+            );
+          })
+        )}
+        {workouts.length > 0 && (
+          <p className="hint" style={{ marginTop: 6 }}>
+            入力ミスは最新の記録なら「取り消す」でEXPごと巻き戻せる（当日中のみ）。
+          </p>
         )}
       </div>
 

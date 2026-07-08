@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeStrengthExp, computeCardioExp, computeGold } from "./expEngine";
-import { addExp, createAvatar, expForLevel } from "./avatar";
+import { addExp, createAvatar, expForLevel, levelStateFromTotalExp } from "./avatar";
 import { computeBmi, computePhysique, muscleTier } from "./physique";
 import { computeCondition, proteinStatus, calorieStatus } from "./meals";
 import { estimateSimpleMeal, simpleMealName, PROTEIN_LEVELS, MEAL_SIZES } from "./simpleMeal";
@@ -67,6 +67,24 @@ describe("avatar leveling", () => {
     const res = addExp(a, 150); // Lv1で100消費、50繰越
     expect(res.avatar.level).toBe(2);
     expect(res.avatar.expIntoLevel).toBe(50);
+  });
+
+  it("levelStateFromTotalExp は addExp の結果と一致する(取り消しの巻き戻しに使う)", () => {
+    for (const total of [0, 50, 100, 150, 901, 1000, 12345]) {
+      const grown = addExp(createAvatar(), total).avatar;
+      const restored = levelStateFromTotalExp(total);
+      expect(restored.level).toBe(grown.level);
+      expect(restored.totalExp).toBe(grown.totalExp);
+      expect(restored.expIntoLevel).toBe(grown.expIntoLevel);
+      expect(restored.expForNextLevel).toBe(grown.expForNextLevel);
+    }
+  });
+
+  it("levelStateFromTotalExp は負の値を0に丸める", () => {
+    const s = levelStateFromTotalExp(-100);
+    expect(s.level).toBe(1);
+    expect(s.totalExp).toBe(0);
+    expect(s.expIntoLevel).toBe(0);
   });
 });
 
