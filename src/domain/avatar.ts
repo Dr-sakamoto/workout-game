@@ -55,6 +55,20 @@ export function addExp(avatar: Avatar, amount: number): LevelUpResult {
   };
 }
 
+/** 累計EXPからレベル状態を復元する(記録の取り消しで巻き戻すときに使う) */
+export function levelStateFromTotalExp(
+  totalExp: number,
+): Pick<Avatar, "level" | "totalExp" | "expIntoLevel" | "expForNextLevel"> {
+  const total = Math.max(0, totalExp);
+  let level = 1;
+  let rest = total;
+  while (rest >= expForLevel(level)) {
+    rest -= expForLevel(level);
+    level += 1;
+  }
+  return { level, totalExp: total, expIntoLevel: rest, expForNextLevel: expForLevel(level) };
+}
+
 export interface AppearanceTier {
   tier: number;
   title: string;

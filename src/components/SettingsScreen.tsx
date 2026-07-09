@@ -1,11 +1,52 @@
-import { useState } from "react";
-import { useGameStore } from "../store/useGameStore";
+import { useRef, useState } from "react";
+import { useGameStore, STORAGE_KEY, todayKey } from "../store/useGameStore";
 import { soundEngine } from "../sounds/soundEngine";
 import { SCHEDULE_PRESETS, effectiveSchedule } from "../domain/schedule";
 
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [seOn, setSeOn] = useState(soundEngine.seOn);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 機種変・キャッシュクリアでの全データ消失(ISSUES.md A-2)への一次対応。
+  // 保存形式は zustand persist の生JSONそのまま(読み込みは書き戻すだけ)。
+  const exportBackup = () => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      setBackupMsg("保存データがありません");
+      return;
+    }
+    const blob = new Blob([raw], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kintore-quest-backup-${todayKey()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    soundEngine.play("click");
+    setBackupMsg("書き出しました。ファイルを安全な場所に保管してください");
+  };
+
+  const importBackup = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // persist形式( {state: {...}, version } )で、プロフィールを持つことだけ確認
+      if (!parsed || typeof parsed !== "object" || !parsed.state?.profile) {
+        throw new Error("invalid");
+      }
+      const name = String(parsed.state.profile.name ?? "?");
+      const level = Number(parsed.state.avatar?.level ?? 1);
+      if (!window.confirm(`「${name}」(Lv.${level}) のバックアップで今のデータを上書きします。よろしいですか？`)) {
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, text);
+      location.reload(); // ストアを丸ごと読み直す
+    } catch {
+      setBackupMsg("読み込めませんでした。このアプリのバックアップファイルか確認してください");
+    }
+  };
   const resetAll = useGameStore((s) => s.resetAll);
   const profile = useGameStore((s) => s.profile);
   const changeSchedule = useGameStore((s) => s.changeSchedule);
@@ -63,6 +104,30 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         <div className="settings-section">
           <div className="settings-section-title">データ</div>
+          <p className="hint" style={{ marginBottom: 8 }}>
+            データは端末内にのみ保存される。機種変・ブラウザのデータ削除に備えて
+            バックアップを書き出しておこう。
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button className="btn full secondary" onClick={exportBackup}>
+              📤 バックアップを書き出す
+            </button>
+            <button className="btn full secondary" onClick={() => fileRef.current?.click()}>
+              📥 読み込む
+            </button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void importBackup(f);
+              e.target.value = "";
+            }}
+          />
+          {backupMsg && <p className="hint" style={{ marginBottom: 8 }}>{backupMsg}</p>}
           {!confirmReset ? (
             <button className="btn full secondary" onClick={() => setConfirmReset(true)}>
               データをリセット

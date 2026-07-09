@@ -6,11 +6,19 @@ import type {
   Profile,
   SleepLog,
   SleepQuality,
+  StatKey,
   Stats,
   WorkoutLog,
   WorkoutSet,
+  WorkoutUndo,
 } from "../domain/types";
-import { createAvatar, addExp, INITIAL_STATS, maxHp } from "../domain/avatar";
+import {
+  createAvatar,
+  addExp,
+  levelStateFromTotalExp,
+  INITIAL_STATS,
+  maxHp,
+} from "../domain/avatar";
 import { EXERCISE_MAP } from "../domain/exercises";
 import {
   computeBaseExp,
@@ -38,6 +46,12 @@ import {
 } from "../domain/schedule";
 import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
 import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
+
+/** localStorage の保存キー。バックアップの書き出し/読み込みでも使う */
+export const STORAGE_KEY = "workout-game-v1";
+
+/** persist のスキーマバージョン。フィールドを増減したら上げる(migrate が走る) */
+export const STORE_VERSION = 1;
 
 export function todayKey(d = new Date()): string {
   // ローカル時刻基準の YYYY-MM-DD。
@@ -131,16 +145,19 @@ interface GameState {
   playerHp: number; // 現在HP。サボると減り、トレで回復する
   lastDailyCheckDate: string | null; // 日次ペナルティ処理済みの日付
   lastPenalty: PenaltyInfo | null; // 表示用ペナルティ情報
+  sleepPopupDate: string | null; // 睡眠ポップアップを表示済み(=「あとで」済み)の日付
 
   initProfile: (p: Profile) => void;
   setBodyFat: (n: number) => void;
   changeSchedule: (days: number[]) => void;
   toggleFavorite: (exerciseId: string) => void;
   logWorkout: (exerciseId: string, input: { sets?: WorkoutSet[]; minutes?: number }) => void;
+  undoWorkout: (logId: string) => void;
   logMeal: (meal: Omit<MealLog, "id" | "date">) => void;
   updateMeal: (id: string, patch: Partial<Omit<MealLog, "id" | "date">>) => void;
   deleteMeal: (id: string) => void;
   logSleep: (quality: SleepQuality) => void;
+  snoozeSleepPopup: () => void;
   claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
   claimAchievement: (id: string, rewardGold: number) => void;
   buyItem: (id: ItemEffect) => void;
@@ -173,6 +190,7 @@ const FRESH = {
   playerHp: maxHp(INITIAL_STATS), // 60
   lastDailyCheckDate: null as string | null,
   lastPenalty: null as PenaltyInfo | null,
+  sleepPopupDate: null as string | null,
 };
 
 export const useGameStore = create<GameState>()(
@@ -353,11 +371,28 @@ export const useGameStore = create<GameState>()(
         // --- HPの回復: トレーニングするとHPが戻る ---
         const newMaxHp = maxHp(avatar.stats);
         const hpRecovery = Math.floor(earnedExp / 4);
-        const playerHp = Math.min(newMaxHp, (state.playerHp ?? newMaxHp) + hpRecovery);
+        const hpBefore = state.playerHp ?? maxHp(state.avatar.stats);
+        const playerHp = Math.min(newMaxHp, hpBefore + hpRecovery);
+
+        // 取り消し用スナップショット(この記録が動かした状態の巻き戻し情報)
+        const undo: WorkoutUndo = {
+          streak: { ...state.streak },
+          boss: { ...state.boss },
+          defeatedBoss: !!bossDefeated,
+          bossGold,
+          bossExp,
+          partGain,
+          playerHp: hpBefore,
+          prevBestVolume: prevVolBest,
+          prevBestDayExp: records.bestDayExp,
+          prevBestStreak: records.bestStreak,
+          expBoostUsed,
+          shieldUsed,
+        };
 
         set({
           avatar,
-          workoutLogs: [log, ...state.workoutLogs],
+          workoutLogs: [{ ...log, undo }, ...state.workoutLogs],
           streak: { count: streakRes.count, lastDate: streakRes.lastDate },
           streakShields,
           expBoostCharges,
@@ -386,6 +421,62 @@ export const useGameStore = create<GameState>()(
         });
       },
 
+      // 直近のトレ記録の取り消し(タイプミス対策)。安全に巻き戻せる条件を
+      // 「当日の・最新の1件」に限定する。それより古い記録は、間に他の記録や
+      // 日次ペナルティが挟まりスナップショットの整合が保証できないため対象外。
+      undoWorkout: (logId) => {
+        const state = get();
+        const log = state.workoutLogs[0];
+        if (!log || log.id !== logId || !log.undo) return;
+        if (log.date !== todayKey()) return;
+        const u = log.undo;
+
+        // ステータスとレベル(レベルは累計EXPから決定的に復元できる)
+        const negGains: Partial<Stats> = {};
+        (Object.keys(log.statGains) as StatKey[]).forEach((k) => {
+          negGains[k] = -(log.statGains[k] ?? 0);
+        });
+        const stats = addStats(state.avatar.stats, negGains);
+        const avatar: Avatar = {
+          ...state.avatar,
+          ...levelStateFromTotalExp(state.avatar.totalExp - log.earnedExp - u.bossExp),
+          stats,
+          // 記録後にゴールドを使っていた場合はマイナスになりうるので0で止める
+          gold: Math.max(0, state.avatar.gold - log.earnedGold - u.bossGold),
+        };
+
+        const partKey = categoryToPart(log.category);
+        const partVolumes: PartVolumes = {
+          ...state.partVolumes,
+          [partKey]: Math.max(0, state.partVolumes[partKey] - u.partGain),
+        };
+
+        const records: Records = {
+          bestVolumeByExercise: { ...state.records.bestVolumeByExercise },
+          bestDayExp: u.prevBestDayExp,
+          bestStreak: u.prevBestStreak,
+        };
+        if (u.prevBestVolume > 0) {
+          records.bestVolumeByExercise[log.exerciseId] = u.prevBestVolume;
+        } else {
+          delete records.bestVolumeByExercise[log.exerciseId];
+        }
+
+        set({
+          avatar,
+          workoutLogs: state.workoutLogs.slice(1),
+          streak: { ...u.streak },
+          boss: { ...u.boss },
+          bossesDefeated: state.bossesDefeated - (u.defeatedBoss ? 1 : 0),
+          partVolumes,
+          records,
+          playerHp: Math.min(u.playerHp, maxHp(stats)),
+          expBoostCharges: state.expBoostCharges + (u.expBoostUsed ? 1 : 0),
+          streakShields: state.streakShields + (u.shieldUsed ? 1 : 0),
+          lastReward: null,
+        });
+      },
+
       logSleep: (quality) => {
         const today = todayKey();
         set((s) => ({
@@ -395,6 +486,10 @@ export const useGameStore = create<GameState>()(
           ],
         }));
       },
+
+      // 「あとで」を永続化し、睡眠ポップアップの割り込みを1日1回までにする。
+      // 記録自体はホームのボタンからいつでもできる(§1「10秒で終わる軽さ」)。
+      snoozeSleepPopup: () => set({ sleepPopupDate: todayKey() }),
 
       logMeal: (meal) => {
         const state = get();
@@ -504,7 +599,9 @@ export const useGameStore = create<GameState>()(
         const damagePerDay = boss.attackPower;
         const currentHp = state.playerHp ?? maxHp(state.avatar.stats);
         const mhp = maxHp(state.avatar.stats);
-        const newHp = Math.max(1, currentHp - damagePerDay * missedDays);
+        // 0 まで許す。0 になるとアバターの見た目が一時的に1段階なまる
+        // (weakenedBuild)。トレーニングでHPが戻れば見た目も戻る。
+        const newHp = Math.max(0, currentHp - damagePerDay * missedDays);
         const actualDamage = currentHp - newHp;
 
         if (actualDamage === 0) {
@@ -529,7 +626,27 @@ export const useGameStore = create<GameState>()(
 
       resetAll: () => set({ profile: null, ...FRESH }),
     }),
-    { name: "workout-game-v1" },
+    {
+      name: STORAGE_KEY,
+      version: STORE_VERSION,
+      // スキーマ変更に耐える移行。旧バージョン(またはキー欠落)の保存データに
+      // 対し、FRESH の初期値を土台にして永続化された値を上書きする。これにより
+      // 新しく追加したフィールド(例: sleepPopupDate)が undefined になって
+      // 実行時エラーやゲーム崩壊を起こすのを防ぐ。プロフィールなどユーザー資産は
+      // そのまま保持される。
+      migrate: (persisted, _version) => {
+        const p = (persisted ?? {}) as Partial<GameState>;
+        return {
+          ...FRESH,
+          ...p,
+          // ネストしたオブジェクトも欠落キーを初期値で補う
+          streak: { ...FRESH.streak, ...(p.streak ?? {}) },
+          records: { ...FRESH.records, ...(p.records ?? {}) },
+          boss: { ...FRESH.boss, ...(p.boss ?? {}) },
+          partVolumes: { ...FRESH.partVolumes, ...(p.partVolumes ?? {}) },
+        } as GameState;
+      },
+    },
   ),
 );
 
@@ -540,7 +657,7 @@ export function selectToday(state: GameState) {
   const meals = state.mealLogs.filter((m) => m.date === today);
   const sleep = state.sleepLogs.find((s) => s.date === today) ?? null;
   const quests = state.profile
-    ? evaluateDailyQuests(workouts, meals, state.profile)
+    ? evaluateDailyQuests(workouts, meals, state.profile, state.avatar.level)
     : [];
   const claimed = state.claimedQuestsByDate[today] ?? [];
   return { today, workouts, meals, sleep, quests, claimed };

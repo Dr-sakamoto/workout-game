@@ -47,6 +47,26 @@ export interface WorkoutLog {
   earnedExp: number; // コンディション補正後
   earnedGold: number;
   statGains: Partial<Stats>;
+  /** 取り消し用の巻き戻し情報。タイプミス(40→400kg)を当日中なら無かったことに
+   *  できるよう、この記録が変化させた状態のスナップショットを持つ。 */
+  undo?: WorkoutUndo;
+}
+
+/** 記録時点の状態スナップショット。最新の記録を丸ごと巻き戻すために使う */
+export interface WorkoutUndo {
+  streak: { count: number; lastDate: string | null };
+  boss: { index: number; hp: number };
+  defeatedBoss: boolean;
+  bossGold: number;
+  bossExp: number;
+  partGain: number;
+  playerHp: number;
+  /** 0 = この種目の自己ベストは未登録だった */
+  prevBestVolume: number;
+  prevBestDayExp: number;
+  prevBestStreak: number;
+  expBoostUsed: boolean;
+  shieldUsed: boolean;
 }
 
 export type MealSlot = "morning" | "noon" | "night" | "snack";

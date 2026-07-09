@@ -45,32 +45,38 @@ function PenaltyToast() {
   const hpPct = Math.min(100, (penalty.newHp / penalty.maxHp) * 100);
   const hpFill = hpPct > 60 ? "fill-hp" : hpPct > 30 ? "fill-hp-warn" : "fill-hp-danger";
 
-  // ダメージ SE はユーザーのタップ内で再生する（初回ジェスチャー前でも動く）
   const dismiss = () => {
-    soundEngine.play("damage");
+    soundEngine.play("click");
     clearPenalty();
   };
 
+  // 復帰セッションの開幕を罰にしない(UX_AUDIT A-3)。戻ってきたこと自体を
+  // 歓迎し、ダメージは事実として小さく伝え、「今日トレすれば回復する」を主役に。
   return (
     <div className="toast-overlay" onClick={dismiss}>
       <div className="toast toast-penalty" onClick={(e) => e.stopPropagation()}>
-        <div className="penalty-header">
-          {penalty.bossEmoji} {penalty.bossName}の攻撃！
-        </div>
+        <div className="comeback-header">💪 おかえり！</div>
         <div className="penalty-missed">
-          {penalty.missedDays === 1 ? "昨日サボった！" : `${penalty.missedDays}日間サボった！`}
+          {penalty.missedDays === 1
+            ? "会えなかった間に…"
+            : `${penalty.missedDays}日ぶり！ 会えなかった間に…`}
         </div>
         <div className="penalty-dmg">
-          攻撃力 {penalty.damagePerDay} × {penalty.missedDays}日
+          {penalty.bossEmoji} {penalty.bossName}に -{penalty.totalDamage} HP 削られた
         </div>
-        <div className="penalty-total">= -{penalty.totalDamage} HP ダメージ</div>
         <div className="penalty-hp-label">残りHP: {penalty.newHp} / {penalty.maxHp}</div>
         <div className="bar" style={{ margin: "6px 0 12px" }}>
           <span className={hpFill} style={{ width: `${hpPct}%` }} />
         </div>
-        <div className="hint">トレーニングすればHPが回復する！</div>
-        <button className="btn full btn-penalty-ok" style={{ marginTop: 16 }} onClick={dismiss}>
-          わかった
+        <div className="comeback-hint">
+          {penalty.newHp <= 0 ? (
+            <>HPが尽きて体が少しなまってしまった…。<br />でも大丈夫、今日トレーニングすれば見た目もHPも戻る。<br />ここから巻き返そう！</>
+          ) : (
+            <>でも大丈夫。今日トレーニングすればHPは回復する。<br />戻ってきたキミはもう勝っている。ここから巻き返そう！</>
+          )}
+        </div>
+        <button className="btn green full" style={{ marginTop: 16 }} onClick={dismiss}>
+          よし、やるぞ 🔥
         </button>
       </div>
     </div>
@@ -124,13 +130,15 @@ export default function App() {
   const gold = useGameStore((s) => s.avatar.gold);
   const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
   const sleepLogs = useGameStore((s) => s.sleepLogs);
+  const sleepPopupDate = useGameStore((s) => s.sleepPopupDate);
+  const snoozeSleepPopup = useGameStore((s) => s.snoozeSleepPopup);
   const [tab, setTab] = useState<Tab>("home");
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sleepPopupDismissed, setSleepPopupDismissed] = useState(false);
 
   const todaySleepLogged = sleepLogs.some((l) => l.date === todayKey());
-  const showSleepPopup = !!profile && !todaySleepLogged && !sleepPopupDismissed;
+  // 全画面の割り込みは1日1回まで。「あとで」は永続化され、再起動で再表示しない
+  const showSleepPopup = !!profile && !todaySleepLogged && sleepPopupDate !== todayKey();
 
   // タブ移動に軽いクリック音を添える(同じタブなら鳴らさない)
   const selectTab = (next: Tab) => {
@@ -194,9 +202,7 @@ export default function App() {
 
       {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
       {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
-      {showSleepPopup && (
-        <SleepSurveyPopup onClose={() => setSleepPopupDismissed(true)} />
-      )}
+      {showSleepPopup && <SleepSurveyPopup onClose={snoozeSleepPopup} />}
       <PenaltyToast />
       <RewardToast />
     </div>

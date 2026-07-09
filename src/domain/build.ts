@@ -38,4 +38,20 @@ export function computeBuild(
   return { girth, soft, parts, view };
 }
 
+/**
+ * HP が尽きたときの一時的な「なまった」見た目。表示上だけ全部位の発達を
+ * 1段階落とし、たるみ(soft)を再計算する。実データ(partVolumes)は一切
+ * 減らさない —— トレーニングで HP が戻れば見た目も元通りになる。
+ *
+ * 「鍛えた肉体こそ報酬」(原則1)なので、サボると"その報酬が少しだけ陰る"
+ * のは強い復帰動機になる。ただし恒久的に奪うと理不尽なので、あくまで
+ * 可逆・一時的な演出にとどめる。
+ */
+export function weakenedBuild(build: AvatarBuild): AvatarBuild {
+  const parts = { ...build.parts };
+  for (const p of VISUAL_PARTS) parts[p] = Math.max(0, parts[p] - 1);
+  const soft = Math.max(0, build.girth - overallMuscle(parts));
+  return { ...build, parts, soft };
+}
+
 export const BODY_FAT_LABELS = ["ガリガリ", "細い", "標準", "ぽっちゃり", "デブ"];
