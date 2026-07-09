@@ -17,7 +17,7 @@ import { EXERCISE_MAP } from "./exercises";
 import { bossAt, BOSSES } from "./bosses";
 import { ACHIEVEMENTS } from "./achievements";
 import { partTier, categoryToPart } from "./parts";
-import { computeBuild, overallMuscle } from "./build";
+import { computeBuild, overallMuscle, weakenedBuild } from "./build";
 import type { MealLog, Profile } from "./types";
 
 describe("expEngine", () => {
@@ -304,6 +304,26 @@ describe("parts (部位別レベル)", () => {
     const heavy = computeBuild(160, 95, undefined, "front");
     expect(skinny.girth).toBeLessThan(heavy.girth);
     expect(overallMuscle(skinny.parts)).toBe(0);
+  });
+
+  it("weakenedBuild は全部位を1段階下げ、0未満にはしない(HP枯渇の一時演出)", () => {
+    const vols = { chest: 20000, back: 20000, shoulders: 0, arms: 6000, legs: 0, core: 0, conditioning: 0 };
+    const build = computeBuild(170, 70, vols, "front", 2);
+    const weak = weakenedBuild(build);
+    for (const p of ["chest", "back", "shoulders", "arms", "legs", "core"] as const) {
+      expect(weak.parts[p]).toBe(Math.max(0, build.parts[p] - 1));
+    }
+    // 発達済みの部位は確実に下がり、ゼロの部位は0のまま
+    expect(weak.parts.chest).toBeLessThan(build.parts.chest);
+    expect(weak.parts.shoulders).toBe(0);
+  });
+
+  it("weakenedBuild は元の build を破壊しない(実データは不変)", () => {
+    const vols = { chest: 20000, back: 0, shoulders: 0, arms: 0, legs: 0, core: 0, conditioning: 0 };
+    const build = computeBuild(170, 70, vols, "front", 2);
+    const chestBefore = build.parts.chest;
+    weakenedBuild(build);
+    expect(build.parts.chest).toBe(chestBefore);
   });
 });
 

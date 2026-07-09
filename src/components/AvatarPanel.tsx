@@ -1,7 +1,7 @@
 import { useGameStore, selectToday } from "../store/useGameStore";
 import { appearanceForLevel, maxHp } from "../domain/avatar";
 import { computeBmi } from "../domain/physique";
-import { computeBuild, BODY_FAT_LABELS } from "../domain/build";
+import { computeBuild, weakenedBuild, BODY_FAT_LABELS } from "../domain/build";
 import { computeCondition } from "../domain/meals";
 import { computeSleepCondition, SLEEP_OPTIONS } from "../domain/sleep";
 import { STAT_LABELS } from "../domain/exercises";
@@ -25,8 +25,13 @@ export function AvatarPanel() {
 
   const bmi = Math.round(computeBmi(profile.heightCm, profile.weightKg) * 10) / 10;
   const effFat = bodyFat ?? 2;
-  const buildFront = computeBuild(profile.heightCm, profile.weightKg, partVolumes, "front", effFat);
-  const buildBack = computeBuild(profile.heightCm, profile.weightKg, partVolumes, "back", effFat);
+  const mhpForWeak = maxHp(avatar.stats);
+  // HPが尽きると見た目が一時的に1段階なまる(可逆)。トレでHPが戻れば元通り。
+  const weakened = (playerHp ?? mhpForWeak) <= 0;
+  const rawFront = computeBuild(profile.heightCm, profile.weightKg, partVolumes, "front", effFat);
+  const rawBack = computeBuild(profile.heightCm, profile.weightKg, partVolumes, "back", effFat);
+  const buildFront = weakened ? weakenedBuild(rawFront) : rawFront;
+  const buildBack = weakened ? weakenedBuild(rawBack) : rawBack;
   const tiers = partTiers(partVolumes);
   const tier = appearanceForLevel(avatar.level);
   const condition = computeCondition(meals, profile);
@@ -60,6 +65,11 @@ export function AvatarPanel() {
           <div className="avatar-meta">
             {BODY_FAT_LABELS[effFat]} ／ BMI {bmi} ／ 🔥{streak.count}日連続
           </div>
+          {weakened && (
+            <div className="weakened-note">
+              ⚠️ HPが尽きて体が少しなまっている。トレーニングすれば元に戻る！
+            </div>
+          )}
           <div className="fat-adjust">
             <span className="fat-cap">体型を自分に合わせる</span>
             <div className="fat-btns">

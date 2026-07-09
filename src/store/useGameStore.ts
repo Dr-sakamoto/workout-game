@@ -599,7 +599,9 @@ export const useGameStore = create<GameState>()(
         const damagePerDay = boss.attackPower;
         const currentHp = state.playerHp ?? maxHp(state.avatar.stats);
         const mhp = maxHp(state.avatar.stats);
-        const newHp = Math.max(1, currentHp - damagePerDay * missedDays);
+        // 0 まで許す。0 になるとアバターの見た目が一時的に1段階なまる
+        // (weakenedBuild)。トレーニングでHPが戻れば見た目も戻る。
+        const newHp = Math.max(0, currentHp - damagePerDay * missedDays);
         const actualDamage = currentHp - newHp;
 
         if (actualDamage === 0) {

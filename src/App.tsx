@@ -69,8 +69,11 @@ function PenaltyToast() {
           <span className={hpFill} style={{ width: `${hpPct}%` }} />
         </div>
         <div className="comeback-hint">
-          でも大丈夫。今日トレーニングすればHPは回復する。<br />
-          戻ってきたキミはもう勝っている。ここから巻き返そう！
+          {penalty.newHp <= 0 ? (
+            <>HPが尽きて体が少しなまってしまった…。<br />でも大丈夫、今日トレーニングすれば見た目もHPも戻る。<br />ここから巻き返そう！</>
+          ) : (
+            <>でも大丈夫。今日トレーニングすればHPは回復する。<br />戻ってきたキミはもう勝っている。ここから巻き返そう！</>
+          )}
         </div>
         <button className="btn green full" style={{ marginTop: 16 }} onClick={dismiss}>
           よし、やるぞ 🔥
