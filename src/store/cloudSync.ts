@@ -10,6 +10,7 @@ import {
   type LocalSyncMeta,
   type RemoteSyncMeta,
 } from "../domain/sync";
+import { mergeDurableStates } from "../domain/mergeState";
 import {
   ensureSession,
   fetchRemoteSave,
@@ -100,7 +101,7 @@ async function runStartupSync(): Promise<void> {
       return;
     }
     if (action === "merge" && remoteRow) {
-      await resolveMerge(uid, local.progress, remoteRow, remoteMeta);
+      await resolveMerge(uid, remoteRow, remoteMeta);
       return;
     }
     // noop: 何もしない
@@ -109,24 +110,32 @@ async function runStartupSync(): Promise<void> {
   }
 }
 
-/** 進捗ガードで勝者を決め、負けた側を上書きして両端末を収束させる */
+/**
+ * 進捗ガードで勝者を決めたうえで、ログ(workoutLogs/mealLogs等)は両側をUNIONし、
+ * 派生状態(EXP/ボス/ストリーク/自己ベスト/部位ボリューム)は保存済みの値だけ
+ * から再計算する(P4: domain/mergeState.ts)。負けた側のユニークな記録も失わ
+ * れない。マージ結果はローカルに適用してからremoteへも書き戻し、両端末を
+ * 同じ状態に収束させる。
+ */
 async function resolveMerge(
   uid: string,
-  localProgress: Progress,
   remoteRow: RemoteSave,
   remoteMeta: RemoteSyncMeta,
 ): Promise<void> {
-  const winner = chooseWinner(localProgress, remoteMeta.progress);
-  if (winner === "remote") {
-    applyRemote(remoteRow.state, remoteRow.revision, remoteMeta.progress);
-    notify(SYNC_NOTICE);
-    return;
-  }
+  const localState = useGameStore.getState();
+  const localDurable = serializeForSync(localState);
+  const winnerIsLocal = chooseWinner(progressOf(localState), remoteMeta.progress) === "local";
+  const merged = winnerIsLocal
+    ? mergeDurableStates(localDurable, remoteRow.state)
+    : mergeDurableStates(remoteRow.state, localDurable);
+
+  applyingFromSync = true;
+  useGameStore.setState({ ...merged });
+  applyingFromSync = false;
+
   const rev = await pushLocal(uid, remoteMeta.revision);
-  if (rev) {
-    markSynced(rev, localProgress);
-    notify(SYNC_NOTICE);
-  }
+  if (rev) markSynced(rev, progressOf(merged));
+  notify(SYNC_NOTICE);
 }
 
 /** 変更のたびに呼ぶ。デバウンスして意味のある変更だけをまとめてプッシュする。 */
@@ -157,7 +166,7 @@ async function pushIfPossible(): Promise<void> {
     // 楽観ロック負け(0行更新)=他端末が先に書いた。再取得して進捗ガードで解決
     const remoteRow = await fetchRemoteSave(userId);
     if (!remoteRow) return;
-    await resolveMerge(userId, progress, remoteRow, remoteMetaFrom(remoteRow));
+    await resolveMerge(userId, remoteRow, remoteMetaFrom(remoteRow));
   } finally {
     syncing = false;
   }
