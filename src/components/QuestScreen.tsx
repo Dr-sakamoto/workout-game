@@ -95,7 +95,7 @@ export function QuestScreen() {
                 className="btn green full"
                 style={{ marginTop: 10 }}
                 disabled={!q.done || isClaimed}
-                onClick={() => claimQuest(q.id, q.rewardExp, q.rewardGold)}
+                onClick={() => claimQuest(q.id)}
               >
                 {isClaimed ? "受取済み" : q.done ? "報酬を受け取る" : "未達成"}
               </button>
@@ -118,7 +118,7 @@ export function QuestScreen() {
             <button
               className="btn green full"
               disabled={!a.met || a.isClaimed}
-              onClick={() => claimAchievement(a.id, a.rewardGold)}
+              onClick={() => claimAchievement(a.id)}
             >
               {a.isClaimed ? "受取済み" : a.met ? "報酬を受け取る" : "未達成"}
             </button>

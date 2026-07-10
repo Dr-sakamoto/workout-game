@@ -80,11 +80,18 @@
   set()呼び出しのみ。テスト16件追加（`workoutReducer.test.ts`）。
   副次効果: 将来のログ単位マージ（SYNC_DESIGN.md P4）が、このリデューサの
   上に素直に載せられるようになった。
-- [ ] **D-3 `selectToday` が毎回新オブジェクトを返す**
-  購読コンポーネントがストア変更のたびに再レンダーされる（実害は小）。
+- [x] **D-3 `selectToday` が毎回新オブジェクトを返す** ✅ 対応済み
+  購読コンポーネントがストア変更のたびに（無関係な変更でも）再レンダーされて
+  いた。→ 依存フィールド（workoutLogs/mealLogs/sleepLogs/profile/
+  avatar.level/claimedQuestsByDate/today）の参照が前回と変わっていなければ
+  同じ結果オブジェクトを返す軽量メモ化を追加（reselect相当を手書き）。
 - [x] **D-4 エラーバウンダリ無し** ✅ 対応済み
   描画エラー1つで白画面になり、データは無事でも全損に見えた。
   → `ErrorBoundary` を導入し、「データは端末内に残っている」旨と
   再読み込み・バックアップ導線を提示する復旧画面を表示。
-- [ ] **D-5 `claimQuest` が報酬値を UI から信用して受け取る**
-  ローカルアプリなので実害は小さいが、サーバー移植時に要修正。
+- [x] **D-5 `claimQuest` が報酬値を UI から信用して受け取る** ✅ 対応済み
+  DevTools等から`claimQuest(id, 999999, 999999)`のように任意の報酬値を
+  注入でき、未達成チェックも無かった。→ `claimQuest`/`claimAchievement`とも
+  引数からrewardExp/rewardGoldを削除し、正準の`evaluateDailyQuests`/
+  `ACHIEVEMENTS`から都度導出。未達成・存在しないIDは何も起きないよう
+  ガードを追加。サーバー移植時もこのまま検証ロジックとして使える。

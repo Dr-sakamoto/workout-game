@@ -148,8 +148,8 @@ export interface GameState {
   deleteMeal: (id: string) => void;
   logSleep: (quality: SleepQuality) => void;
   snoozeSleepPopup: () => void;
-  claimQuest: (questId: string, rewardExp: number, rewardGold: number) => void;
-  claimAchievement: (id: string, rewardGold: number) => void;
+  claimQuest: (questId: string) => void;
+  claimAchievement: (id: string) => void;
   buyItem: (id: ItemEffect) => void;
   clearReward: () => void;
   clearPenalty: () => void;
@@ -373,14 +373,24 @@ export const useGameStore = create<GameState>()(
       deleteMeal: (id) =>
         set((s) => ({ mealLogs: s.mealLogs.filter((m) => m.id !== id) })),
 
-      claimQuest: (questId, rewardExp, rewardGold) => {
+      // D-5: 報酬値(rewardExp/rewardGold)をUIから受け取らず、正準のクエスト
+      // 一覧(evaluateDailyQuests)から自分で導く。DevTools等からclaimQuestを
+      // 直接呼んでも、未達成のクエストや存在しないIDでは何も起きない。
+      claimQuest: (questId) => {
         const state = get();
+        if (!state.profile) return;
         const today = todayKey();
         const claimed = state.claimedQuestsByDate[today] ?? [];
         if (claimed.includes(questId)) return;
 
-        const { avatar: leveled, levelsGained } = addExp(state.avatar, rewardExp);
-        const avatar: Avatar = { ...leveled, gold: leveled.gold + rewardGold };
+        const todaysWorkouts = state.workoutLogs.filter((w) => w.date === today);
+        const todaysMeals = state.mealLogs.filter((m) => m.date === today);
+        const quests = evaluateDailyQuests(todaysWorkouts, todaysMeals, state.profile, state.avatar.level);
+        const quest = quests.find((q) => q.id === questId);
+        if (!quest || !quest.done) return;
+
+        const { avatar: leveled, levelsGained } = addExp(state.avatar, quest.rewardExp);
+        const avatar: Avatar = { ...leveled, gold: leveled.gold + quest.rewardGold };
 
         set({
           avatar,
@@ -389,8 +399,8 @@ export const useGameStore = create<GameState>()(
             [today]: [...claimed, questId],
           },
           lastReward: {
-            exp: rewardExp,
-            gold: rewardGold,
+            exp: quest.rewardExp,
+            gold: quest.rewardGold,
             levelsGained,
             statText: "クエスト達成！",
             modifier: 1,
@@ -399,15 +409,20 @@ export const useGameStore = create<GameState>()(
         });
       },
 
-      claimAchievement: (id, rewardGold) => {
+      // 同様にrewardGoldをUIから受け取らず、ACHIEVEMENTSの正準値と
+      // check(progress)の判定をここで再検証する。
+      claimAchievement: (id) => {
         const state = get();
         if (state.claimedAchievements.includes(id)) return;
+        const achievement = ACHIEVEMENTS.find((a) => a.id === id);
+        if (!achievement || !achievement.check(selectProgress(state))) return;
+
         set({
-          avatar: { ...state.avatar, gold: state.avatar.gold + rewardGold },
+          avatar: { ...state.avatar, gold: state.avatar.gold + achievement.rewardGold },
           claimedAchievements: [...state.claimedAchievements, id],
           lastReward: {
             exp: 0,
-            gold: rewardGold,
+            gold: achievement.rewardGold,
             levelsGained: 0,
             statText: "実績解除！",
             modifier: 1,
@@ -519,8 +534,7 @@ export const useGameStore = create<GameState>()(
 );
 
 // セレクタ的ヘルパー(コンポーネントから使う)
-export function selectToday(state: GameState) {
-  const today = todayKey();
+function computeToday(state: GameState, today: string) {
   const workouts = state.workoutLogs.filter((w) => w.date === today);
   const meals = state.mealLogs.filter((m) => m.date === today);
   const sleep = state.sleepLogs.find((s) => s.date === today) ?? null;
@@ -529,6 +543,51 @@ export function selectToday(state: GameState) {
     : [];
   const claimed = state.claimedQuestsByDate[today] ?? [];
   return { today, workouts, meals, sleep, quests, claimed };
+}
+
+// D-3: 素朴に書くと毎回新しい配列/オブジェクトを返し、`useGameStore(selectToday)`
+// で購読しているコンポーネントが無関係なストア変更(設定変更・同期の
+// ブックキーピング更新等)のたびに再レンダーされてしまう。今日の計算に使う
+// フィールドの参照が前回と変わっていなければ、同じ結果オブジェクトをそのまま
+// 返す軽量メモ化(reselect相当を手書き。1関数だけのために依存追加はしない)。
+let todayCache: {
+  today: string;
+  workoutLogs: WorkoutLog[];
+  mealLogs: MealLog[];
+  sleepLogs: SleepLog[];
+  profile: Profile | null;
+  avatarLevel: number;
+  claimedQuestsByDate: Record<string, string[]>;
+  result: ReturnType<typeof computeToday>;
+} | null = null;
+
+export function selectToday(state: GameState) {
+  const today = todayKey();
+  const c = todayCache;
+  if (
+    c &&
+    c.today === today &&
+    c.workoutLogs === state.workoutLogs &&
+    c.mealLogs === state.mealLogs &&
+    c.sleepLogs === state.sleepLogs &&
+    c.profile === state.profile &&
+    c.avatarLevel === state.avatar.level &&
+    c.claimedQuestsByDate === state.claimedQuestsByDate
+  ) {
+    return c.result;
+  }
+  const result = computeToday(state, today);
+  todayCache = {
+    today,
+    workoutLogs: state.workoutLogs,
+    mealLogs: state.mealLogs,
+    sleepLogs: state.sleepLogs,
+    profile: state.profile,
+    avatarLevel: state.avatar.level,
+    claimedQuestsByDate: state.claimedQuestsByDate,
+    result,
+  };
+  return result;
 }
 
 /** 実績の進捗と達成状況 */
