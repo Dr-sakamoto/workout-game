@@ -46,12 +46,21 @@ import {
 } from "../domain/schedule";
 import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
 import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
+// achievements.ts の Progress(実績の進捗)と名前が衝突するため別名にする
+import type { Progress as SyncProgress } from "../domain/sync";
 
 /** localStorage の保存キー。バックアップの書き出し/読み込みでも使う */
 export const STORAGE_KEY = "workout-game-v1";
 
-/** persist のスキーマバージョン。フィールドを増減したら上げる(migrate が走る) */
-export const STORE_VERSION = 1;
+/**
+ * persist のスキーマバージョン。フィールドを増減したら上げる(migrate が走る)。
+ * v2: アカウント同期(SYNC_DESIGN.md P2)のブックキーピングフィールドを追加。
+ * ここを上げないと、旧バージョンの保存データは version が一致してしまい
+ * migrate が呼ばれず、syncEnabled/lastSyncedProgress が undefined のまま
+ * ロードされて実行時エラーになる(zustand persist は version 不一致のときだけ
+ * migrate を呼ぶ)。
+ */
+export const STORE_VERSION = 2;
 
 export function todayKey(d = new Date()): string {
   // ローカル時刻基準の YYYY-MM-DD。
@@ -121,7 +130,8 @@ function workoutVolume(
   }, 0);
 }
 
-interface GameState {
+// store/cloudSync.ts が型付きで参照できるよう export する
+export interface GameState {
   profile: Profile | null;
   avatar: Avatar;
   workoutLogs: WorkoutLog[];
@@ -147,6 +157,14 @@ interface GameState {
   lastPenalty: PenaltyInfo | null; // 表示用ペナルティ情報
   sleepPopupDate: string | null; // 睡眠ポップアップを表示済み(=「あとで」済み)の日付
 
+  // --- アカウント同期(SYNC_DESIGN.md)のブックキーピング ---
+  // これらは同期対象(domain/sync.ts の DURABLE_STATE_KEYS)に含まれない。
+  // クラウドへ送る耐久データとは別枠で持つ、同期の進行管理そのもの。
+  syncEnabled: boolean; // 既定ON。設定でOFFにできる
+  lastSyncedRevision: number; // 最後に取り込んだ/書き込んだremoteのrevision
+  lastSyncedProgress: SyncProgress; // その時点のtotalExp/logCount(dirty判定用)
+  syncNotice: string | null; // 非ブロッキングの同期通知(「別端末と同期しました」等)
+
   initProfile: (p: Profile) => void;
   setBodyFat: (n: number) => void;
   changeSchedule: (days: number[]) => void;
@@ -164,6 +182,8 @@ interface GameState {
   clearReward: () => void;
   clearPenalty: () => void;
   applyDailyPenalty: () => void;
+  setSyncEnabled: (on: boolean) => void;
+  clearSyncNotice: () => void;
   resetAll: () => void;
 }
 
@@ -191,6 +211,10 @@ const FRESH = {
   lastDailyCheckDate: null as string | null,
   lastPenalty: null as PenaltyInfo | null,
   sleepPopupDate: null as string | null,
+  syncEnabled: true,
+  lastSyncedRevision: 0,
+  lastSyncedProgress: { totalExp: 0, logCount: 0 } as SyncProgress,
+  syncNotice: null as string | null,
 };
 
 export const useGameStore = create<GameState>()(
@@ -569,6 +593,12 @@ export const useGameStore = create<GameState>()(
       clearReward: () => set({ lastReward: null }),
 
       clearPenalty: () => set({ lastPenalty: null }),
+
+      // クラウド同期のON/OFF。OFF→ONへの切り替えはstore/cloudSync.tsのサブスクが
+      // 検知して起動時同期を再実行する。
+      setSyncEnabled: (on) => set({ syncEnabled: on }),
+
+      clearSyncNotice: () => set({ syncNotice: null }),
 
       applyDailyPenalty: () => {
         const state = get();

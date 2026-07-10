@@ -116,12 +116,39 @@ create policy "amend" on community_foods for update using (auth.uid() is not nul
 
 ## 4. 実装フェーズ（小さいPRに分割）
 
-- **P1: スキーマ**（SQL のみ・クライアント無変更＝安全）
-  `game_saves` + RLS、`community_foods` の RLS/CHECK（B-2 根本対応も同梱）。
-- **P2: 同期コア**
-  `sync.ts` + 起動時プル + デバウンスプッシュ + 進捗ガード。設定トグル（既定ON）。
-  純関数にテスト。
-- **P3: メール連携UI**
+- [x] **P1: スキーマ** ✅ 実装済み（SQL のみ・クライアント無変更＝安全）
+  `game_saves` + RLS、`community_foods` の CHECK 制約（B-2 根本対応）。
+  → `supabase/migrations/20260710_0001_game_saves_and_food_check.sql`
+- [x] **P2: 同期コア** ✅ 実装済み
+  - `domain/sync.ts`: 判断ロジックの純関数（`serializeForSync` / `progressOf` /
+    `isDirty` / `chooseWinner` / `decideSyncAction`）+ `DURABLE_STATE_KEYS`
+    （何を同期するかの単一の正）。テスト14件（`domain/sync.test.ts`）。
+  - `lib/supabase.ts`: `ensureSession()`（匿名サインイン）を追加。
+    `community_foods` の書き込みにも使うため、循環import回避の都合でここに置く。
+  - `lib/sync.ts`: `game_saves` テーブルとの通信のみを担う薄いアダプタ
+    （`fetchRemoteSave` / `pushRemoteSave`(挿入衝突に自己修復) /
+    `forceOverwriteRemoteSave`）。
+  - `store/cloudSync.ts`: 起動時プル・デバウンスプッシュ(2.5秒)・進捗ガードの
+    配線。自分自身の書き込み(hydrate/markSynced)による無限ループは
+    `applyingFromSync` フラグで防止。
+  - `store/useGameStore.ts`: `syncEnabled` / `lastSyncedRevision` /
+    `lastSyncedProgress` / `syncNotice` を追加（`STORE_VERSION` を 1→2 に
+    上げて既存ユーザーの `migrate` を確実に発火させた — 上げ忘れると
+    zustand persist は version 一致時に migrate を呼ばず、新フィールドが
+    `undefined` のまま実行時エラーになる）。
+  - `community_foods` の RLS 認証必須化（P1で先送りしていた分）
+    → `supabase/migrations/20260710_0002_community_foods_rls.sql`。
+    バーコード登録は同期のON/OFFに関わらず `ensureSession()` を呼ぶよう変更
+    （同期を切っていてもコミュニティDB登録は動く必要があるため）。
+  - 設定画面に「クラウド同期」トグル（Supabase未設定時は非表示）。
+    「データをリセット」は `pushFreshStateAfterReset()` で remote も上書きし、
+    次回起動時の自動プルでリセットが巻き戻らないようにした
+    （設計時点では未記載だった実装上の穴）。
+  - 非ブロッキングの同期通知（`.sync-banner`、4秒で自動消滅）。
+  - ⚠️ マイグレーションの**適用**と、Supabase ダッシュボードでの
+    **Anonymous Sign-Ins の有効化**が必要（未実施ならログイン不要のまま
+    ローカルのみで動作し続けるだけで、実害はない）。
+- [ ] **P3: メール連携UI**
   「メールで引き継ぎ」設定と、別端末からの引き継ぎフロー。
 - **P4（後日）: ログ単位マージへ昇格**
   D-2 の純粋リデューサ（logWorkout の domain 抽出）が入ったら、ログを UUID で

@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import { useGameStore, STORAGE_KEY, todayKey } from "../store/useGameStore";
+import { pushFreshStateAfterReset } from "../store/cloudSync";
+import { isSupabaseConfigured } from "../lib/supabase";
 import { soundEngine } from "../sounds/soundEngine";
 import { SCHEDULE_PRESETS, effectiveSchedule } from "../domain/schedule";
 
@@ -50,6 +52,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const resetAll = useGameStore((s) => s.resetAll);
   const profile = useGameStore((s) => s.profile);
   const changeSchedule = useGameStore((s) => s.changeSchedule);
+  const syncEnabled = useGameStore((s) => s.syncEnabled);
+  const setSyncEnabled = useGameStore((s) => s.setSyncEnabled);
   const currentDays = effectiveSchedule(profile?.trainingDays);
   const currentId =
     SCHEDULE_PRESETS.find((s) => s.days.join(",") === [...currentDays].sort((a, b) => a - b).join(","))?.id ?? "";
@@ -102,6 +106,30 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        {isSupabaseConfigured() && (
+          <div className="settings-section">
+            <div className="settings-section-title">クラウド同期</div>
+            <p className="hint" style={{ marginBottom: 8 }}>
+              ONにすると、この端末の記録が自動でクラウドに保存される。他の端末で
+              同じアカウントに引き継げば記録を復元できる（引き継ぎ設定は準備中）。
+            </p>
+            <label className="settings-row">
+              <span>クラウド同期</span>
+              <span className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={syncEnabled}
+                  onChange={(e) => {
+                    setSyncEnabled(e.target.checked);
+                    soundEngine.play("click");
+                  }}
+                />
+                <span className="toggle-track" />
+              </span>
+            </label>
+          </div>
+        )}
+
         <div className="settings-section">
           <div className="settings-section-title">データ</div>
           <p className="hint" style={{ marginBottom: 8 }}>
@@ -141,7 +169,13 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                 <button
                   className="btn full"
                   style={{ background: "var(--red)", borderColor: "#800", color: "#fff" }}
-                  onClick={() => { resetAll(); onClose(); }}
+                  onClick={() => {
+                    resetAll();
+                    // クラウド同期中の場合、remoteも上書きしないと次回起動時の
+                    // 自動プルでリセットが巻き戻ってしまう。
+                    void pushFreshStateAfterReset();
+                    onClose();
+                  }}
                 >
                   リセット
                 </button>

@@ -3,7 +3,33 @@ import { createClient } from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-const supabase = url && key ? createClient(url, key) : null;
+// アカウント同期(lib/sync.ts)からも直接使うため export する。
+export const supabase = url && key ? createClient(url, key) : null;
+
+export function isSupabaseConfigured(): boolean {
+  return supabase !== null;
+}
+
+// 匿名セッションの確保。ここに置く理由: community_foods への書き込みはP2で
+// 「認証済みユーザーのみ」のRLSに締めたため(B-2)、アカウント同期(syncEnabled)の
+// ON/OFFに関わらず、バーコード登録など同期を経由しない書き込みにもセッションが
+// 要る。lib/sync.ts からも使うが、supabase クライアントと一緒にこちらへ置くことで
+// supabase.ts ⇄ sync.ts の循環importを避けている。
+export async function ensureSession(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.user) return data.session.user.id;
+
+  const signIn = await supabase.auth.signInAnonymously();
+  if (signIn.error || !signIn.data.session) {
+    console.warn(
+      "supabase: 匿名サインインに失敗しました(Supabaseプロジェクトで Anonymous Sign-Ins が無効になっている可能性があります)",
+      signIn.error,
+    );
+    return null;
+  }
+  return signIn.data.session.user.id;
+}
 
 export interface CommunityFood {
   barcode: string;
@@ -55,6 +81,10 @@ function normalizeName(name: string): string {
 
 export async function registerCommunityFood(food: CommunityFood): Promise<void> {
   if (!supabase) return;
+  // 書き込みには認証済みセッションが要る(RLS: community_foods_write/amend)。
+  // 匿名サインインが無効化されている環境ではここが静かに失敗し、以降の
+  // upsert はRLSに弾かれる。呼び出し側は元々 catch 済みなので記録自体は続行する。
+  await ensureSession();
   await supabase
     .from("community_foods")
     .upsert(sanitizeFood(food), { onConflict: "barcode" });
