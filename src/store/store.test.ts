@@ -103,3 +103,41 @@ describe("undoWorkout", () => {
     expect(useGameStore.getState().expBoostCharges).toBe(1);
   });
 });
+
+describe("アカウント同期のブックキーピング(SYNC_DESIGN.md)", () => {
+  it("既定でsyncEnabledはON、lastSyncedProgress/Revisionは未同期(0)から始まる", () => {
+    const s = useGameStore.getState();
+    expect(s.syncEnabled).toBe(true);
+    expect(s.lastSyncedRevision).toBe(0);
+    expect(s.lastSyncedProgress).toEqual({ totalExp: 0, logCount: 0 });
+    expect(s.syncNotice).toBeNull();
+  });
+
+  it("setSyncEnabled でON/OFFを切り替えられる", () => {
+    useGameStore.getState().setSyncEnabled(false);
+    expect(useGameStore.getState().syncEnabled).toBe(false);
+    useGameStore.getState().setSyncEnabled(true);
+    expect(useGameStore.getState().syncEnabled).toBe(true);
+  });
+
+  it("clearSyncNotice で通知を消せる", () => {
+    useGameStore.setState({ syncNotice: "別の端末の記録と同期しました" });
+    useGameStore.getState().clearSyncNotice();
+    expect(useGameStore.getState().syncNotice).toBeNull();
+  });
+
+  it("resetAll で同期のブックキーピングも初期化される(次回起動時に同期し直せる)", () => {
+    useGameStore.setState({
+      syncEnabled: false,
+      lastSyncedRevision: 42,
+      lastSyncedProgress: { totalExp: 999, logCount: 9 },
+      syncNotice: "x",
+    });
+    useGameStore.getState().resetAll();
+    const s = useGameStore.getState();
+    expect(s.syncEnabled).toBe(true);
+    expect(s.lastSyncedRevision).toBe(0);
+    expect(s.lastSyncedProgress).toEqual({ totalExp: 0, logCount: 0 });
+    expect(s.syncNotice).toBeNull();
+  });
+});

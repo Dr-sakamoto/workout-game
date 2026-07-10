@@ -511,6 +511,16 @@ input, select {
   box-shadow: inset 0 2px 0 var(--amber);
 }
 
+/* ---- 同期の非ブロッキング通知 ---- */
+.sync-banner {
+  position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 45; max-width: 90%;
+  background: var(--panel-2); border: 2px solid var(--line);
+  color: var(--ink); font-family: var(--body); font-size: 14px;
+  padding: 8px 14px; box-shadow: 3px 3px 0 #00000088;
+  cursor: pointer; text-align: center;
+}
+
 /* ---- 報酬トースト ---- */
 .toast-overlay {
   position: fixed; inset: 0; background: #000000bb;

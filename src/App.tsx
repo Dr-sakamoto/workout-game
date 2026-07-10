@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useGameStore, todayKey } from "./store/useGameStore";
 import type { FloatingReward } from "./store/useGameStore";
+import { initCloudSync } from "./store/cloudSync";
 import { Onboarding } from "./components/Onboarding";
 import { AvatarPanel } from "./components/AvatarPanel";
 import { WorkoutScreen } from "./components/WorkoutScreen";
@@ -83,6 +84,26 @@ function PenaltyToast() {
   );
 }
 
+// アカウント同期(SYNC_DESIGN.md)の非ブロッキング通知。全画面オーバーレイの
+// トーストとは違い、操作を遮らない小さいバナーとして数秒で自動的に消える。
+function SyncNoticeBanner() {
+  const notice = useGameStore((s) => s.syncNotice);
+  const clearSyncNotice = useGameStore((s) => s.clearSyncNotice);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(clearSyncNotice, 4000);
+    return () => clearTimeout(t);
+  }, [notice, clearSyncNotice]);
+
+  if (!notice) return null;
+  return (
+    <div className="sync-banner" onClick={clearSyncNotice}>
+      🔄 {notice}
+    </div>
+  );
+}
+
 function RewardToast() {
   const reward = useGameStore((s) => s.lastReward);
   const clear = useGameStore((s) => s.clearReward);
@@ -152,6 +173,13 @@ export default function App() {
     applyDailyPenalty();
   }, [applyDailyPenalty]);
 
+  // アカウント同期は一度だけ起動(プロフィール未作成のOnboarding中でも、既に
+  // 同期済みの端末ならここで既存アカウントの状態を引き当てられるようプロフィール
+  // の有無に関係なく呼ぶ)。initCloudSync自体は多重呼び出しに対して安全。
+  useEffect(() => {
+    initCloudSync();
+  }, []);
+
   // SE のため AudioContext を最初のタップで起動しておく
   const warmupDone = useRef(false);
   const warmupOnce = () => {
@@ -205,6 +233,7 @@ export default function App() {
       {showSleepPopup && <SleepSurveyPopup onClose={snoozeSleepPopup} />}
       <PenaltyToast />
       <RewardToast />
+      <SyncNoticeBanner />
     </div>
   );
 }
