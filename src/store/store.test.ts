@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useGameStore } from "./useGameStore";
+import { useGameStore, selectToday } from "./useGameStore";
 import type { Profile } from "../domain/types";
 
 // 取り消し(undoWorkout)はストアの多くのスライスを横断して巻き戻すため、
@@ -139,5 +139,76 @@ describe("アカウント同期のブックキーピング(SYNC_DESIGN.md)", () 
     expect(s.lastSyncedRevision).toBe(0);
     expect(s.lastSyncedProgress).toEqual({ totalExp: 0, logCount: 0 });
     expect(s.syncNotice).toBeNull();
+  });
+});
+
+describe("claimQuest / claimAchievement は報酬値をUIから信用しない(D-5)", () => {
+  it("未達成のクエストIDを渡しても何も起きない(進行中の train_today)", () => {
+    const before = useGameStore.getState().avatar.gold;
+    useGameStore.getState().claimQuest("train_today"); // まだ記録なし=未達成
+    expect(useGameStore.getState().avatar.gold).toBe(before);
+    expect(useGameStore.getState().claimedQuestsByDate).toEqual({});
+  });
+
+  it("存在しないクエストIDを渡しても何も起きない", () => {
+    const before = useGameStore.getState().avatar.gold;
+    useGameStore.getState().claimQuest("no-such-quest");
+    expect(useGameStore.getState().avatar.gold).toBe(before);
+  });
+
+  it("達成済みのクエストは正準の報酬(quests.tsの値)でしか受け取れない", () => {
+    useGameStore.getState().logWorkout("bench", { sets: [{ weight: 40, reps: 10 }] });
+    useGameStore.getState().claimQuest("train_today");
+    const s = useGameStore.getState();
+    expect(s.claimedQuestsByDate[Object.keys(s.claimedQuestsByDate)[0]]).toContain("train_today");
+    expect(s.lastReward?.exp).toBe(30); // quests.ts の train_today.rewardExp
+    expect(s.lastReward?.gold).toBe(10);
+  });
+
+  it("同じクエストは2回受け取れない", () => {
+    useGameStore.getState().logWorkout("bench", { sets: [{ weight: 40, reps: 10 }] });
+    useGameStore.getState().claimQuest("train_today");
+    const goldAfterFirst = useGameStore.getState().avatar.gold;
+    useGameStore.getState().claimQuest("train_today");
+    expect(useGameStore.getState().avatar.gold).toBe(goldAfterFirst);
+  });
+
+  it("未達成の実績IDを渡しても何も起きない", () => {
+    const before = useGameStore.getState().avatar.gold;
+    useGameStore.getState().claimAchievement("level_25"); // Lv1では未達成
+    expect(useGameStore.getState().avatar.gold).toBe(before);
+    expect(useGameStore.getState().claimedAchievements).toEqual([]);
+  });
+
+  it("存在しない実績IDを渡しても何も起きない", () => {
+    const before = useGameStore.getState().avatar.gold;
+    useGameStore.getState().claimAchievement("no-such-achievement");
+    expect(useGameStore.getState().avatar.gold).toBe(before);
+  });
+
+  it("達成済みの実績は正準の報酬(achievements.tsの値)でしか受け取れない", () => {
+    useGameStore.getState().logWorkout("bench", { sets: [{ weight: 40, reps: 10 }] }); // totalWorkouts>=1
+    useGameStore.getState().claimAchievement("first_workout");
+    const s = useGameStore.getState();
+    expect(s.claimedAchievements).toContain("first_workout");
+    expect(s.lastReward?.gold).toBe(10); // achievements.ts の first_workout.rewardGold
+  });
+});
+
+describe("selectToday のメモ化(D-3)", () => {
+  it("無関係な状態変更(同期トグル等)では同じ結果オブジェクトを返す", () => {
+    const first = selectToday(useGameStore.getState());
+    useGameStore.getState().setSyncEnabled(false);
+    const second = selectToday(useGameStore.getState());
+    expect(second).toBe(first); // 参照が同じ=再レンダーを誘発しない
+    useGameStore.getState().setSyncEnabled(true);
+  });
+
+  it("記録を追加すると新しい結果を返す(内容も正しい)", () => {
+    const first = selectToday(useGameStore.getState());
+    useGameStore.getState().logWorkout("bench", { sets: [{ weight: 40, reps: 10 }] });
+    const second = selectToday(useGameStore.getState());
+    expect(second).not.toBe(first);
+    expect(second.workouts.length).toBe(1);
   });
 });

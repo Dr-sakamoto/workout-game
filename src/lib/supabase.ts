@@ -31,6 +31,40 @@ export async function ensureSession(): Promise<string | null> {
   return signIn.data.session.user.id;
 }
 
+// P3(SYNC_DESIGN.md): 匿名認証だけでは端末のキャッシュクリアでデータが
+// 消えるため、復帰可能な身元(メール)を紐づけて初めて真の耐久性が生まれる。
+//
+// 現在の端末(既に進捗がある側)を保護する: 匿名セッションにメールを
+// 紐づける。確認メール内のリンクをクリックするまでは反映されない。
+// (auth.updateUser は既存のuser_idを維持したまま email を追加する)
+export async function linkEmailToCurrentSession(email: string): Promise<string | null> {
+  if (!supabase) return "unconfigured";
+  const { error } = await supabase.auth.updateUser(
+    { email },
+    { emailRedirectTo: window.location.origin },
+  );
+  return error ? error.message : null;
+}
+
+// 別の端末で、既にメールを紐づけたアカウントにサインインする(マジックリンク)。
+// この端末に既存の進捗があっても、次回同期時にログ単位マージ(P4)で
+// 安全に統合される(データは失われない)。
+export async function signInWithEmailLink(email: string): Promise<string | null> {
+  if (!supabase) return "unconfigured";
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  return error ? error.message : null;
+}
+
+/** 現在のセッションに紐づいているメールアドレス(未紐づけなら null) */
+export async function getLinkedEmail(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user?.email ?? null;
+}
+
 export interface CommunityFood {
   barcode: string;
   name: string;
