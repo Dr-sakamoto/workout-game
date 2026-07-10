@@ -47,18 +47,22 @@ create policy "own save" on game_saves
 
 現状はクライアント側クランプのみ（`src/lib/supabase.ts`）。サーバー側でも:
 ```sql
-alter table community_foods enable row level security;
--- 認証済みユーザーは読み書き可（Wikipedia型の共有DB）
-create policy "read"  on community_foods for select using (true);
-create policy "write" on community_foods for insert with check (auth.uid() is not null);
-create policy "amend" on community_foods for update using (auth.uid() is not null);
--- 異常値をDBレベルでも弾く
+-- 異常値をDBレベルでも弾く（B-2 の本丸）。P1 で NOT VALID 追加（既存行を壊さない）
 alter table community_foods
-  add constraint pfc_sane check (
+  add constraint community_foods_pfc_sane check (
     protein between 0 and 300 and fat between 0 and 300 and
     carb between 0 and 500 and calories between 0 and 3000
-  );
+  ) not valid;
+
+-- RLS の「書き込みは認証済みのみ」は匿名認証(P2)が入ってから締める。
+-- P1 で認証必須にすると、認証導入前は登録機能が壊れるため P2 に回す。
+alter table community_foods enable row level security;             -- ← P2
+create policy "read"  on community_foods for select using (true);  -- ← P2
+create policy "write" on community_foods for insert with check (auth.uid() is not null); -- ← P2
+create policy "amend" on community_foods for update using (auth.uid() is not null);      -- ← P2
 ```
+> **シーケンス注意**: 値の健全性ガード（CHECK）は影響が無いので **P1** で入れる。
+> 書き込み者を認証済みに限る RLS は、匿名認証が動く **P2** で auth と同時に締める。
 
 ## 2. クライアント同期層（`src/lib/sync.ts`）
 
