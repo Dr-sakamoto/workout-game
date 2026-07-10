@@ -10,7 +10,6 @@ import type {
   Stats,
   WorkoutLog,
   WorkoutSet,
-  WorkoutUndo,
 } from "../domain/types";
 import {
   createAvatar,
@@ -20,14 +19,7 @@ import {
   maxHp,
 } from "../domain/avatar";
 import { EXERCISE_MAP } from "../domain/exercises";
-import {
-  computeBaseExp,
-  computeGold,
-  computeStatGains,
-  addStats,
-} from "../domain/expEngine";
-import { computeCondition } from "../domain/meals";
-import { computeSleepCondition } from "../domain/sleep";
+import { addStats } from "../domain/expEngine";
 import { evaluateDailyQuests } from "../domain/quests";
 import {
   emptyPartVolumes,
@@ -38,13 +30,9 @@ import {
 import { overallMuscle } from "../domain/build";
 import { girthFromBmi, computeBmi } from "../domain/physique";
 import { bossAt } from "../domain/bosses";
-import {
-  effectiveSchedule,
-  isScheduledDay,
-  advanceScheduleStreak,
-  missedScheduledDays,
-} from "../domain/schedule";
+import { effectiveSchedule, missedScheduledDays } from "../domain/schedule";
 import { SHOP_ITEMS, type ItemEffect } from "../domain/shop";
+import { applyWorkoutLog } from "../domain/workoutReducer";
 import { ACHIEVEMENTS, type Progress } from "../domain/achievements";
 // achievements.ts の Progress(実績の進捗)と名前が衝突するため別名にする
 import type { Progress as SyncProgress } from "../domain/sync";
@@ -112,22 +100,6 @@ export interface Records {
 export interface BossState {
   index: number;
   hp: number;
-}
-
-/** その種目1回ぶんのボリューム(自重は体重を負荷に含める) */
-function workoutVolume(
-  sets: WorkoutSet[],
-  bodyweight: boolean,
-  bwFactor: number,
-  userWeightKg: number,
-): number {
-  return sets.reduce((acc, s) => {
-    if (s.reps <= 0) return acc;
-    const load = bodyweight
-      ? userWeightKg * bwFactor + Math.max(0, s.weight)
-      : Math.max(0, s.weight);
-    return acc + load * s.reps;
-  }, 0);
 }
 
 // store/cloudSync.ts が型付きで参照できるよう export する
@@ -256,192 +228,58 @@ export const useGameStore = create<GameState>()(
             : [...s.favorites, id],
         })),
 
+      // 計算そのものは domain/workoutReducer.ts の純関数(applyWorkoutLog)に
+      // 委譲する(D-2)。ここは id/today の発行とストアの読み書きだけを担う。
       logWorkout: (exerciseId, input) => {
         const state = get();
         const profile = state.profile;
         const exercise = EXERCISE_MAP[exerciseId];
         if (!profile || !exercise) return;
 
-        const today = todayKey();
-        const todaysMeals = state.mealLogs.filter((m) => m.date === today);
-        const condition = computeCondition(todaysMeals, profile);
-        const todaySleep = state.sleepLogs.find((s) => s.date === today) ?? null;
-        const sleepCond = computeSleepCondition(todaySleep?.quality ?? null);
-
-        const baseExp = computeBaseExp(exercise, input, profile.weightKg);
-        if (baseExp <= 0) return;
-
-        // コンディション補正(食事×睡眠)
-        let earnedExp = Math.max(1, Math.round(baseExp * condition.expModifier * sleepCond.expModifier));
-        // コンディションドリンク(EXPブースト)を1チャージ消費
-        let expBoostCharges = state.expBoostCharges;
-        let expBoostUsed = false;
-        if (expBoostCharges > 0) {
-          earnedExp = Math.round(earnedExp * 1.5);
-          expBoostCharges -= 1;
-          expBoostUsed = true;
-        }
-        const earnedGold = computeGold(earnedExp);
-        const statGains = computeStatGains(exercise, earnedExp);
-
-        const log: WorkoutLog = {
-          id: crypto.randomUUID(),
-          date: today,
-          exerciseId,
-          exerciseName: exercise.name,
-          category: exercise.category,
-          sets: input.sets ?? [],
-          minutes: input.minutes,
-          baseExp,
-          earnedExp,
-          earnedGold,
-          statGains,
-        };
-
-        // --- ボス戦: 獲得EXPがダメージ ---
-        let bossIndex = state.boss.index;
-        let bossHp = state.boss.hp - earnedExp;
-        let bossDefeated: string | undefined;
-        let bossGold = 0;
-        let bossExp = 0;
-        let bossesDefeated = state.bossesDefeated;
-        if (bossHp <= 0) {
-          const b = bossAt(bossIndex);
-          bossDefeated = b.name;
-          bossGold = b.rewardGold;
-          bossExp = b.rewardExp;
-          bossesDefeated += 1;
-          bossIndex += 1;
-          bossHp = bossAt(bossIndex).maxHp; // 次のボスは満タンから(オーバーキル持ち越しなし)
-        }
-
-        // --- レベル/ゴールド(ワークアウト＋ボス報酬) ---
-        const { avatar: leveled, levelsGained } = addExp(state.avatar, earnedExp + bossExp);
-        const avatar: Avatar = {
-          ...leveled,
-          stats: addStats(leveled.stats, statGains),
-          gold: leveled.gold + earnedGold + bossGold,
-        };
-
-        const statText = Object.entries(statGains)
-          .map(([k, v]) => `${k.toUpperCase()} +${v}`)
-          .join("  ");
-
-        // --- ストリーク(スケジュール基準) ---
-        // 予定日(本人の週間スケジュール)にトレした時だけ継続を伸ばす。予定日を
-        // 飛ばすと途切れる。予定外の日(休養日)のトレはストリークに影響しない。
-        const sched = effectiveSchedule(profile.trainingDays);
-        let streakRes = state.streak;
-        let shieldUsed = false;
-        if (isScheduledDay(today, sched)) {
-          const advanced = advanceScheduleStreak(state.streak, today, sched);
-          // 予定日を飛ばして継続が切れた場合、シールド在庫があれば1回守る
-          // (Phase2でキャラ絡みの"課金で見逃し"イベントに置き換え予定)
-          const brokeChain =
-            state.streak.lastDate !== null &&
-            state.streak.lastDate !== today &&
-            advanced.count === 1 &&
-            state.streak.count > 0;
-          if (brokeChain && state.streakShields > 0) {
-            streakRes = { count: state.streak.count + 1, lastDate: today };
-            shieldUsed = true;
-          } else {
-            streakRes = advanced;
-          }
-        }
-        const streakShields = state.streakShields - (shieldUsed ? 1 : 0);
-
-        // --- 自己ベスト判定(ライバルは自分) ---
-        const records = state.records;
-        let newBest: string | undefined;
-        const volume = workoutVolume(
-          input.sets ?? [],
-          exercise.bodyweight,
-          exercise.bodyweightFactor ?? 0.6,
-          profile.weightKg,
+        const result = applyWorkoutLog(
+          {
+            avatar: state.avatar,
+            boss: state.boss,
+            bossesDefeated: state.bossesDefeated,
+            streak: state.streak,
+            streakShields: state.streakShields,
+            expBoostCharges: state.expBoostCharges,
+            records: state.records,
+            partVolumes: state.partVolumes,
+            playerHp: state.playerHp ?? maxHp(state.avatar.stats),
+          },
+          {
+            id: crypto.randomUUID(),
+            today: todayKey(),
+            profile,
+            exercise,
+            sets: input.sets,
+            minutes: input.minutes,
+            allMealLogs: state.mealLogs,
+            allSleepLogs: state.sleepLogs,
+            allWorkoutLogs: state.workoutLogs,
+          },
         );
-        // --- 部位別ボリュームの累積(部位ごとに見た目が育つ) ---
-        const partKey = categoryToPart(exercise.category);
-        const partGain = exercise.category === "cardio" ? earnedExp * 4 : volume;
-        const partVolumes: PartVolumes = {
-          ...state.partVolumes,
-          [partKey]: state.partVolumes[partKey] + partGain,
-        };
-
-        const prevVolBest = records.bestVolumeByExercise[exerciseId] ?? 0;
-        const todayExp =
-          earnedExp +
-          state.workoutLogs
-            .filter((w) => w.date === today)
-            .reduce((a, w) => a + w.earnedExp, 0);
-
-        const nextRecords: Records = {
-          bestVolumeByExercise: { ...records.bestVolumeByExercise },
-          bestDayExp: Math.max(records.bestDayExp, todayExp),
-          bestStreak: Math.max(records.bestStreak, streakRes.count),
-        };
-        if (volume > prevVolBest && prevVolBest > 0) {
-          newBest = `${exercise.name} 自己ベスト更新！`;
-          nextRecords.bestVolumeByExercise[exerciseId] = volume;
-        } else {
-          nextRecords.bestVolumeByExercise[exerciseId] = Math.max(prevVolBest, volume);
-          if (todayExp > records.bestDayExp && records.bestDayExp > 0) {
-            newBest = "1日の最高EXPを更新！";
-          } else if (streakRes.count > records.bestStreak && records.bestStreak > 0) {
-            newBest = `最長ストリーク更新！ ${streakRes.count}回`;
-          }
-        }
-
-        // --- HPの回復: トレーニングするとHPが戻る ---
-        const newMaxHp = maxHp(avatar.stats);
-        const hpRecovery = Math.floor(earnedExp / 4);
-        const hpBefore = state.playerHp ?? maxHp(state.avatar.stats);
-        const playerHp = Math.min(newMaxHp, hpBefore + hpRecovery);
-
-        // 取り消し用スナップショット(この記録が動かした状態の巻き戻し情報)
-        const undo: WorkoutUndo = {
-          streak: { ...state.streak },
-          boss: { ...state.boss },
-          defeatedBoss: !!bossDefeated,
-          bossGold,
-          bossExp,
-          partGain,
-          playerHp: hpBefore,
-          prevBestVolume: prevVolBest,
-          prevBestDayExp: records.bestDayExp,
-          prevBestStreak: records.bestStreak,
-          expBoostUsed,
-          shieldUsed,
-        };
+        if (!result) return;
 
         set({
-          avatar,
-          workoutLogs: [{ ...log, undo }, ...state.workoutLogs],
-          streak: { count: streakRes.count, lastDate: streakRes.lastDate },
-          streakShields,
-          expBoostCharges,
-          records: nextRecords,
-          partVolumes,
-          playerHp,
+          avatar: result.avatar,
+          workoutLogs: [result.log, ...state.workoutLogs],
+          streak: result.streak,
+          streakShields: result.streakShields,
+          expBoostCharges: result.expBoostCharges,
+          records: result.records,
+          partVolumes: result.partVolumes,
+          playerHp: result.playerHp,
           lastSetsByExercise: input.sets
             ? { ...state.lastSetsByExercise, [exerciseId]: input.sets }
             : state.lastSetsByExercise,
           lastMinutesByExercise: input.minutes
             ? { ...state.lastMinutesByExercise, [exerciseId]: input.minutes }
             : state.lastMinutesByExercise,
-          boss: { index: bossIndex, hp: bossHp },
-          bossesDefeated,
-          lastReward: {
-            exp: earnedExp,
-            gold: earnedGold + bossGold,
-            levelsGained,
-            statText,
-            modifier: Math.round(condition.expModifier * sleepCond.expModifier * 100) / 100,
-            newBest,
-            bossDefeated,
-            expBoostUsed,
-            source: "workout",
-          },
+          boss: result.boss,
+          bossesDefeated: result.bossesDefeated,
+          lastReward: { ...result.reward, source: "workout" },
         });
       },
 
