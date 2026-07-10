@@ -1,7 +1,7 @@
 # アカウント同期 設計方針（A-2 根本対応）
 
 > 決定日: 2026-07-09 ／ 対象: ISSUES.md A-2「localStorage のみの永続化・データ消失」
-> ステータス: **P1〜P2・P4 実装済み／P3 未着手**。オーナー判断（アンケート）で以下を決定:
+> ステータス: **P1〜P4 すべて実装済み**。オーナー判断（アンケート）で以下を決定:
 > 1. 耐久性モデル = **匿名認証 + メール連携**
 > 2. データ形式 = **1ユーザー=1行の JSON（jsonb）**
 > 3. 競合解決 = **LWW + 進捗ガード + ログ単位UNIONマージ（P4で実装済み）**
@@ -148,8 +148,25 @@ create policy "amend" on community_foods for update using (auth.uid() is not nul
   - ⚠️ マイグレーションの**適用**と、Supabase ダッシュボードでの
     **Anonymous Sign-Ins の有効化**が必要（未実施ならログイン不要のまま
     ローカルのみで動作し続けるだけで、実害はない）。
-- [ ] **P3: メール連携UI**
-  「メールで引き継ぎ」設定と、別端末からの引き継ぎフロー。
+- [x] **P3: メール連携UI** ✅ 実装済み
+  - `lib/supabase.ts`: `linkEmailToCurrentSession(email)`（`auth.updateUser`
+    で匿名セッションにメールを紐づける＝今使っている端末のデータを保護）、
+    `signInWithEmailLink(email)`（`auth.signInWithOtp`で既に紐づけた
+    メールにマジックリンクサインイン＝別端末からデータを呼び出す）、
+    `getLinkedEmail()`（現在のセッションの紐づけ状況）を追加。
+  - `store/cloudSync.ts`: `supabase.auth.onAuthStateChange` を購読し、
+    マジックリンク完了／メール確認完了（`SIGNED_IN`/`USER_UPDATED`）で
+    user_id が切り替わったら、その端末の同期ブックキーピング
+    （`lastSyncedRevision`/`lastSyncedProgress`）を「別アカウント基準」の
+    古い値として破棄し、改めて起動時同期（プル/マージ）をやり直す。
+  - 設定画面に「メールで引き継ぎ」セクションを追加。「このデータを保護する」
+    と「別の端末のデータを呼び出す」を明確に分けて提示（同じボタン1つに
+    まとめると意図の取り違えが起きうるため）。別端末に既存の進捗があっても
+    P4のログ単位マージで自動的に統合される（データは失われない）旨を明記。
+  - ⚠️ Supabase ダッシュボードで **Email 認証（Email OTP/Magic Link）の
+    有効化**と、**Site URL / Redirect URLs にデプロイ先ドメインを追加**
+    しておくこと（未設定だとメール送信自体は成功しても、リンクが正しい
+    URLへ戻ってこない）。
 - [x] **P4: ログ単位マージへ昇格** ✅ 実装済み
   D-2 の純粋リデューサ（`applyWorkoutLog`）を土台に、`domain/mergeState.ts`
   の `mergeDurableStates` を実装。LWW で「勝った側」を丸ごと採用していた

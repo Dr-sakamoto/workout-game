@@ -11,6 +11,7 @@ import {
   type RemoteSyncMeta,
 } from "../domain/sync";
 import { mergeDurableStates } from "../domain/mergeState";
+import { supabase } from "../lib/supabase";
 import {
   ensureSession,
   fetchRemoteSave,
@@ -33,6 +34,7 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let syncing = false; // 起動プルとデバウンスプッシュの同時実行を防ぐ
 let applyingFromSync = false; // 自分自身の書き込み(hydrate/markSynced)による無限ループ防止
 let unsubscribe: (() => void) | null = null;
+let authUnsubscribe: (() => void) | null = null;
 let started = false;
 
 function localMetaFrom(state: GameState): LocalSyncMeta {
@@ -194,6 +196,19 @@ export function initCloudSync(): void {
   });
 
   window.addEventListener("online", () => void pushIfPossible());
+
+  // P3: メールでの引き継ぎ(マジックリンク完了 or メール確認完了)でuser_idが
+  // 切り替わったら、この端末の同期ブックキーピングは「別アカウント基準」の
+  // 古い値なので捨て、改めて起動時同期(プル/マージ)をやり直す。
+  const authListener = supabase?.auth.onAuthStateChange((event, session) => {
+    if (event !== "SIGNED_IN" && event !== "USER_UPDATED") return;
+    const newUserId = session?.user?.id ?? null;
+    if (newUserId && newUserId !== userId) {
+      markSynced(0, { totalExp: 0, logCount: 0 });
+    }
+    void runStartupSync();
+  });
+  authUnsubscribe = () => authListener?.data.subscription.unsubscribe();
 }
 
 /**
@@ -226,4 +241,6 @@ export function __resetCloudSyncModuleStateForTests(): void {
   pushTimer = null;
   unsubscribe?.();
   unsubscribe = null;
+  authUnsubscribe?.();
+  authUnsubscribe = null;
 }
