@@ -1,239 +1,45 @@
-import { useState, useEffect, useRef } from "react";
-import { useGameStore, todayKey } from "./store/useGameStore";
-import type { FloatingReward } from "./store/useGameStore";
-import { initCloudSync } from "./store/cloudSync";
+import { useState } from "react";
+import { useStore } from "./store/useStore";
+import { GachaScreen } from "./components/GachaScreen";
+import { WeekScreen } from "./components/WeekScreen";
+import { MonthScreen } from "./components/MonthScreen";
+import { YearScreen } from "./components/YearScreen";
+import { ActionsScreen } from "./components/ActionsScreen";
 import { Onboarding } from "./components/Onboarding";
-import { AvatarPanel } from "./components/AvatarPanel";
-import { WorkoutScreen } from "./components/WorkoutScreen";
-import { MealScreen } from "./components/MealScreen";
-import { QuestScreen } from "./components/QuestScreen";
-import { BossScreen } from "./components/BossScreen";
-import { ShopModal } from "./components/ShopModal";
-import { SettingsScreen } from "./components/SettingsScreen";
-import { SleepSurveyPopup } from "./components/SleepSurveyPopup";
-import { soundEngine } from "./sounds/soundEngine";
 
-type Tab = "home" | "train" | "meal" | "boss" | "quest";
+const TABS = [
+  { id: "gacha", label: "ガチャ", icon: "◎" },
+  { id: "week", label: "週", icon: "▦" },
+  { id: "month", label: "月", icon: "◐" },
+  { id: "year", label: "年", icon: "★" },
+  { id: "actions", label: "行動", icon: "≡" },
+] as const;
 
-// 報酬 SE を一か所で管理するフック。各トーストに分散させない。
-function useSoundEffects() {
-  const lastReward = useGameStore((s) => s.lastReward);
-  const prev = useRef<FloatingReward | null>(null);
-
-  useEffect(() => {
-    if (lastReward && lastReward !== prev.current) {
-      prev.current = lastReward;
-      if (lastReward.source === "quest" || lastReward.source === "achievement") {
-        soundEngine.play("quest");
-      } else if (lastReward.bossDefeated) {
-        soundEngine.play("bossDefeat");
-      } else if (lastReward.levelsGained > 0) {
-        soundEngine.play("levelup");
-      } else {
-        soundEngine.play("workout");
-      }
-    }
-    if (!lastReward) prev.current = null;
-  }, [lastReward]);
-}
-
-function PenaltyToast() {
-  const penalty = useGameStore((s) => s.lastPenalty);
-  const clearPenalty = useGameStore((s) => s.clearPenalty);
-
-  if (!penalty) return null;
-
-  const hpPct = Math.min(100, (penalty.newHp / penalty.maxHp) * 100);
-  const hpFill = hpPct > 60 ? "fill-hp" : hpPct > 30 ? "fill-hp-warn" : "fill-hp-danger";
-
-  const dismiss = () => {
-    soundEngine.play("click");
-    clearPenalty();
-  };
-
-  // 復帰セッションの開幕を罰にしない(UX_AUDIT A-3)。戻ってきたこと自体を
-  // 歓迎し、ダメージは事実として小さく伝え、「今日トレすれば回復する」を主役に。
-  return (
-    <div className="toast-overlay" onClick={dismiss}>
-      <div className="toast toast-penalty" onClick={(e) => e.stopPropagation()}>
-        <div className="comeback-header">💪 おかえり！</div>
-        <div className="penalty-missed">
-          {penalty.missedDays === 1
-            ? "会えなかった間に…"
-            : `${penalty.missedDays}日ぶり！ 会えなかった間に…`}
-        </div>
-        <div className="penalty-dmg">
-          {penalty.bossEmoji} {penalty.bossName}に -{penalty.totalDamage} HP 削られた
-        </div>
-        <div className="penalty-hp-label">残りHP: {penalty.newHp} / {penalty.maxHp}</div>
-        <div className="bar" style={{ margin: "6px 0 12px" }}>
-          <span className={hpFill} style={{ width: `${hpPct}%` }} />
-        </div>
-        <div className="comeback-hint">
-          {penalty.newHp <= 0 ? (
-            <>HPが尽きて体が少しなまってしまった…。<br />でも大丈夫、今日トレーニングすれば見た目もHPも戻る。<br />ここから巻き返そう！</>
-          ) : (
-            <>でも大丈夫。今日トレーニングすればHPは回復する。<br />戻ってきたキミはもう勝っている。ここから巻き返そう！</>
-          )}
-        </div>
-        <button className="btn green full" style={{ marginTop: 16 }} onClick={dismiss}>
-          よし、やるぞ 🔥
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// アカウント同期(SYNC_DESIGN.md)の非ブロッキング通知。全画面オーバーレイの
-// トーストとは違い、操作を遮らない小さいバナーとして数秒で自動的に消える。
-function SyncNoticeBanner() {
-  const notice = useGameStore((s) => s.syncNotice);
-  const clearSyncNotice = useGameStore((s) => s.clearSyncNotice);
-
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(clearSyncNotice, 4000);
-    return () => clearTimeout(t);
-  }, [notice, clearSyncNotice]);
-
-  if (!notice) return null;
-  return (
-    <div className="sync-banner" onClick={clearSyncNotice}>
-      🔄 {notice}
-    </div>
-  );
-}
-
-function RewardToast() {
-  const reward = useGameStore((s) => s.lastReward);
-  const clear = useGameStore((s) => s.clearReward);
-
-  if (!reward) return null;
-  return (
-    <div className="toast-overlay" onClick={clear}>
-      <div className="toast" onClick={(e) => e.stopPropagation()}>
-        {reward.levelsGained > 0 && (
-          <div className="levelup">★ LEVEL UP! ★ +{reward.levelsGained}</div>
-        )}
-        {reward.bossDefeated && (
-          <div className="newbest">⚔️ {reward.bossDefeated} を撃破！</div>
-        )}
-        {reward.newBest && (
-          <div className="newbest">🏆 {reward.newBest}</div>
-        )}
-        {reward.exp > 0 && <div className="big-exp">+{reward.exp} EXP</div>}
-        <div style={{ color: "var(--amber)" }}>+{reward.gold} ゴールド</div>
-        {reward.expBoostUsed && (
-          <div className="hint" style={{ marginTop: 8, color: "var(--green)" }}>
-            🧪 コンディションドリンク発動 ×1.5
-          </div>
-        )}
-        {reward.modifier !== 1 && (
-          <div className="hint" style={{ marginTop: 8 }}>
-            コンディション補正 ×{reward.modifier}
-          </div>
-        )}
-        {reward.statText && (
-          <div style={{ color: "var(--blue)", fontSize: 9, marginTop: 8 }}>
-            {reward.statText}
-          </div>
-        )}
-        <button className="btn full" style={{ marginTop: 16 }} onClick={clear}>
-          OK
-        </button>
-      </div>
-    </div>
-  );
-}
+type Tab = (typeof TABS)[number]["id"];
 
 export default function App() {
-  const profile = useGameStore((s) => s.profile);
-  const gold = useGameStore((s) => s.avatar.gold);
-  const applyDailyPenalty = useGameStore((s) => s.applyDailyPenalty);
-  const sleepLogs = useGameStore((s) => s.sleepLogs);
-  const sleepPopupDate = useGameStore((s) => s.sleepPopupDate);
-  const snoozeSleepPopup = useGameStore((s) => s.snoozeSleepPopup);
-  const [tab, setTab] = useState<Tab>("home");
-  const [shopOpen, setShopOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const onboarded = useStore((s) => s.onboarded);
+  const [tab, setTab] = useState<Tab>("gacha");
 
-  const todaySleepLogged = sleepLogs.some((l) => l.date === todayKey());
-  // 全画面の割り込みは1日1回まで。「あとで」は永続化され、再起動で再表示しない
-  const showSleepPopup = !!profile && !todaySleepLogged && sleepPopupDate !== todayKey();
-
-  // タブ移動に軽いクリック音を添える(同じタブなら鳴らさない)
-  const selectTab = (next: Tab) => {
-    if (next !== tab) soundEngine.play("click");
-    setTab(next);
-  };
-
-  useSoundEffects();
-
-  useEffect(() => {
-    applyDailyPenalty();
-  }, [applyDailyPenalty]);
-
-  // アカウント同期は一度だけ起動(プロフィール未作成のOnboarding中でも、既に
-  // 同期済みの端末ならここで既存アカウントの状態を引き当てられるようプロフィール
-  // の有無に関係なく呼ぶ)。initCloudSync自体は多重呼び出しに対して安全。
-  useEffect(() => {
-    initCloudSync();
-  }, []);
-
-  // SE のため AudioContext を最初のタップで起動しておく
-  const warmupDone = useRef(false);
-  const warmupOnce = () => {
-    if (warmupDone.current) return;
-    warmupDone.current = true;
-    soundEngine.warmup();
-  };
-
-  if (!profile) return <Onboarding />;
+  if (!onboarded) return <Onboarding />;
 
   return (
-    <div className="app" onTouchStart={warmupOnce} onClick={warmupOnce}>
-      <div className="topbar">
-        <span className="title">▸ {profile.name}</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button className="coin-btn gear-btn" onClick={() => { soundEngine.play("click"); setSettingsOpen(true); }}>
-            ⚙
-          </button>
-          <button className="coin coin-btn" onClick={() => { soundEngine.play("click"); setShopOpen(true); }}>
-            🪙 {gold} ▸ 🏪
-          </button>
-        </div>
-      </div>
-
-      {tab === "home" && <AvatarPanel />}
-      {tab === "train" && <WorkoutScreen />}
-      {tab === "meal" && <MealScreen />}
-      {tab === "boss" && <BossScreen />}
-      {tab === "quest" && <QuestScreen />}
-
+    <div className="app">
+      <main className="screen">
+        {tab === "gacha" && <GachaScreen />}
+        {tab === "week" && <WeekScreen />}
+        {tab === "month" && <MonthScreen />}
+        {tab === "year" && <YearScreen />}
+        {tab === "actions" && <ActionsScreen />}
+      </main>
       <nav className="tabbar">
-        <button className={tab === "home" ? "active" : ""} onClick={() => selectTab("home")}>
-          <span className="ico">🧍</span>アバター
-        </button>
-        <button className={tab === "train" ? "active" : ""} onClick={() => selectTab("train")}>
-          <span className="ico">🏋️</span>トレ
-        </button>
-        <button className={tab === "meal" ? "active" : ""} onClick={() => selectTab("meal")}>
-          <span className="ico">🍽️</span>食事
-        </button>
-        <button className={tab === "boss" ? "active" : ""} onClick={() => selectTab("boss")}>
-          <span className="ico">⚔️</span>バトル
-        </button>
-        <button className={tab === "quest" ? "active" : ""} onClick={() => selectTab("quest")}>
-          <span className="ico">📜</span>クエスト
-        </button>
+        {TABS.map((t) => (
+          <button key={t.id} className={tab === t.id ? "active" : ""} onClick={() => setTab(t.id)}>
+            <span className="tab-icon">{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
       </nav>
-
-      {shopOpen && <ShopModal onClose={() => setShopOpen(false)} />}
-      {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
-      {showSleepPopup && <SleepSurveyPopup onClose={snoozeSleepPopup} />}
-      <PenaltyToast />
-      <RewardToast />
-      <SyncNoticeBanner />
     </div>
   );
 }
