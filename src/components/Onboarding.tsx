@@ -1,132 +1,113 @@
-import { useMemo, useState } from "react";
-import { useGameStore } from "../store/useGameStore";
-import { computeBmi, bodyTypeLabel } from "../domain/physique";
-import { computeBuild } from "../domain/build";
-import type { Goal } from "../domain/types";
-import { SCHEDULE_PRESETS, scheduleLabel } from "../domain/schedule";
-import { PixelAvatar } from "./PixelAvatar";
+import { useState } from "react";
+import { useStore } from "../store/useStore";
+import { BAN_PRESETS, DEFENSE_PRESETS, OFFENSE_PRESETS } from "../domain/presets";
 
 export function Onboarding() {
-  const initProfile = useGameStore((s) => s.initProfile);
-  const [name, setName] = useState("");
-  const [height, setHeight] = useState("172");
-  const [weight, setWeight] = useState("65");
-  const [goal, setGoal] = useState<Goal>("bulk");
-  // 初心者にはこちらから提案(既定は週3)。ストリークはこの予定日基準で判定される。
-  const [scheduleId, setScheduleId] = useState("w3");
-  const trainingDays = SCHEDULE_PRESETS.find((s) => s.id === scheduleId)!.days;
+  const { goals, addGoal, removeGoal, finishOnboarding } = useStore();
+  const [step, setStep] = useState(0);
+  const [title, setTitle] = useState("");
+  const [why, setWhy] = useState("");
+  const [def, setDef] = useState(() => DEFENSE_PRESETS.map(() => true));
+  const [off, setOff] = useState(() => OFFENSE_PRESETS.map(() => true));
+  const [ban, setBan] = useState(() => BAN_PRESETS.map(() => true));
 
-  const h = Number(height) || 0;
-  const w = Number(weight) || 0;
-  const bmi = Math.round(computeBmi(h, w) * 10) / 10;
+  const submitGoal = () => {
+    if (!title.trim()) return;
+    addGoal(title.trim(), why.trim());
+    setTitle("");
+    setWhy("");
+  };
 
-  // 入力に応じてアバターの体格がリアルタイムに変化(身長＋体重で見た目決定)
-  const build = useMemo(() => computeBuild(h, w, undefined, "front"), [h, w]);
-
-  const valid = name.trim().length > 0 && h >= 120 && h <= 230 && w >= 30 && w <= 200;
+  const finish = () =>
+    finishOnboarding(
+      [...DEFENSE_PRESETS.filter((_, i) => def[i]), ...OFFENSE_PRESETS.filter((_, i) => off[i])],
+      BAN_PRESETS.filter((_, i) => ban[i]),
+    );
 
   return (
     <div className="app">
-      <div className="topbar">
-        <span className="title">▸ 筋トレクエスト</span>
-        <span>NEW GAME</span>
-      </div>
-      <div className="screen">
-        <div className="panel">
-          <h2>キャラメイク</h2>
-          <p className="hint">
-            身長と体重から、キミの分身(ボクサー)の体格が決まる。<br />
-            ここからトレーニングで鍛え上げていけ。
-          </p>
-
-          <div className="avatar-stage" style={{ margin: "14px 0" }}>
-            <PixelAvatar build={build} size={170} />
-            <div className="avatar-meta">
-              BMI {bmi || "--"} ／ {h > 0 && w > 0 ? bodyTypeLabel(bmi) : "--"}
-            </div>
-          </div>
-
-          <label>名前</label>
-          <input
-            value={name}
-            maxLength={12}
-            placeholder="例: ロッキー"
-            onChange={(e) => setName(e.target.value)}
-          />
-
-          <div className="inline-inputs" style={{ gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label>身長 (cm)</label>
-              <input
-                type="number"
-                value={height}
-                onChange={(e) => setHeight(e.target.value)}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label>体重 (kg)</label>
-              <input
-                type="number"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <label>目標</label>
-          <select value={goal} onChange={(e) => setGoal(e.target.value as Goal)}>
-            <option value="bulk">増量(バルクアップ)</option>
-            <option value="cut">減量(カット)</option>
-            <option value="keep">維持</option>
-          </select>
-
-          <label>トレーニングの頻度</label>
-          <p className="hint" style={{ margin: "2px 0 8px" }}>
-            週に何回鍛える? この予定日にトレするとストリークが伸びる。
-            （あとから変えられるが、基本は据え置きでコツコツと）
-          </p>
-          <div className="sched-guide">
-            <p className="sched-guide-title">💡 休養日って必要? 迷ったらここで判断</p>
-            <p>
-              <b>軽め</b>（腕立て20回くらいで余裕がある）→ 回復はすぐ追いつく。
-              <b>毎日〜週6でOK</b>、続けるほど伸びる。
+      <main className="screen onboarding">
+        {step === 0 && (
+          <section>
+            <h1>行動ガチャ</h1>
+            <p className="lead">1日1回ハンドルを回すと、今日のカードが出てきます。</p>
+            <p className="muted">
+              カードには今日やることのステッカーが4枚と、今日の禁止事項が1つ。
+              楽しいことほどキラキラのステッカーになります。終わったらハンコを押すだけ。
             </p>
-            <p>
-              <b>ガチで追い込む</b>（自重でも限界レップ・きついフォーム）→ 筋肉の回復に1〜2日必要。
-              休養日を挟む<b>週3〜4がおすすめ</b>。
+            <p className="muted">
+              中身はランダムに見えて、裏では目標・期限・疲れ・これまでの行動を見て調整しています。
+              できなかった日があっても、週の単位でちゃんと帳尻を合わせます。
             </p>
-            <p className="sched-guide-note">
-              迷う初心者はまず「毎日」でハードルを下げてもいい。きつくなってきたら頻度を落とせる。
-            </p>
-          </div>
-          <div className="sched-grid">
-            {SCHEDULE_PRESETS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`sched-card ${scheduleId === s.id ? "active" : ""}`}
-                onClick={() => setScheduleId(s.id)}
-              >
-                <span className="sched-emoji">{s.emoji}</span>
-                <span className="sched-label">{s.label}</span>
-                <span className="sched-desc">{s.desc}</span>
-              </button>
-            ))}
-          </div>
-          <p className="hint" style={{ marginTop: 6 }}>予定日: {scheduleLabel(trainingDays)}</p>
+            <button className="primary" onClick={() => setStep(1)}>はじめる</button>
+          </section>
+        )}
 
-          <button
-            className="btn green full"
-            style={{ marginTop: 18 }}
-            disabled={!valid}
-            onClick={() =>
-              initProfile({ name: name.trim(), heightCm: h, weightKg: w, goal, trainingDays })
-            }
-          >
-            ▶ 冒険を始める
-          </button>
-        </div>
-      </div>
+        {step === 1 && (
+          <section>
+            <h2>今年なりたい姿は？</h2>
+            <p className="muted">目標ごとに、それに向けた行動を自動でつくります。あとからでも追加できます。</p>
+            <div className="card form">
+              <input placeholder="例: 絵を描けるようになる" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input placeholder="なぜ?(任意)" value={why} onChange={(e) => setWhy(e.target.value)} />
+              <button onClick={submitGoal} disabled={!title.trim()}>追加</button>
+            </div>
+            <ul className="list">
+              {goals.map((g) => (
+                <li key={g.id} className="row">
+                  <span>★ {g.title}</span>
+                  <button className="ghost" onClick={() => removeGoal(g.id)}>×</button>
+                </li>
+              ))}
+            </ul>
+            <button className="primary" onClick={() => setStep(2)}>次へ</button>
+          </section>
+        )}
+
+        {step === 2 && (
+          <section>
+            <h2>ガチャに入れる行動</h2>
+            <p className="muted">チェックを外したものは出ません。ここで細かく決めなくて大丈夫です。</p>
+            <ul className="list">
+              {DEFENSE_PRESETS.map((p, i) => (
+                <li key={p.title}>
+                  <label className="check">
+                    <input type="checkbox" checked={def[i]} onChange={() => setDef(def.map((v, j) => (j === i ? !v : v)))} />
+                    {p.title}
+                  </label>
+                </li>
+              ))}
+              {OFFENSE_PRESETS.map((p, i) => (
+                <li key={p.title}>
+                  <label className="check">
+                    <input type="checkbox" checked={off[i]} onChange={() => setOff(off.map((v, j) => (j === i ? !v : v)))} />
+                    {p.title}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <button className="primary" onClick={() => setStep(3)}>次へ</button>
+          </section>
+        )}
+
+        {step === 3 && (
+          <section>
+            <h2>禁止事項</h2>
+            <p className="muted">毎日このうち1つがカードの下の帯に出ます。</p>
+            <ul className="list">
+              {BAN_PRESETS.map((p, i) => (
+                <li key={p}>
+                  <label className="check">
+                    <input type="checkbox" checked={ban[i]} onChange={() => setBan(ban.map((v, j) => (j === i ? !v : v)))} />
+                    {p}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <button className="primary" onClick={finish}>ガチャのところへ行く</button>
+          </section>
+        )}
+      </main>
     </div>
   );
 }

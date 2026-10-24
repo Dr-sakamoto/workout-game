@@ -1,115 +1,97 @@
-// フレームワーク非依存のドメイン型。後で React Native へ移植する際もここはそのまま使える。
+/**
+ * 防御行動=放置による損失を防ぐ / 攻撃行動=将来の可能性を広げる
+ * 抽選の内部でだけ使い、UIには出さない。
+ */
+export type ActionKind = "defense" | "offense";
 
-export type StatKey = "str" | "end" | "vit" | "agi" | "dex";
+/** 体力コスト。1=寝転がってでもできる / 3=気合いが要る */
+export type Energy = 1 | 2 | 3;
 
-export type Stats = Record<StatKey, number>;
+/** 放置したときの損失の大きさ(防御行動のみ意味を持つ) */
+export type Loss = 1 | 2 | 3;
 
-export type ExerciseCategory =
-  | "chest"
-  | "back"
-  | "legs"
-  | "shoulders"
-  | "arms"
-  | "core"
-  | "cardio";
+/** 自分にとっての楽しさ。ステッカーのキラ度になる(1=ノーマル〜4=ホロ) */
+export type Fun = 1 | 2 | 3 | 4;
 
-export interface Exercise {
+export interface Action {
   id: string;
-  name: string;
-  category: ExerciseCategory;
-  /** この種目が主に伸ばすステータス */
-  targetStat: StatKey;
-  /** EXP 係数。危険・高負荷なコンパウンド種目ほど高い */
-  coefficient: number;
-  /** 自重種目か(true なら重量入力の代わりに体重×係数を使う) */
-  bodyweight: boolean;
-  /** 自重係数(体重の何割が負荷になるか) */
-  bodyweightFactor?: number;
-  /** 有酸素種目の METs 値 */
-  mets?: number;
-  emoji: string;
+  title: string;
+  kind: ActionKind;
+  /** 2〜5分で始められる最初の一歩 */
+  starter: string;
+  energy: Energy;
+  loss: Loss;
+  fun: Fun;
+  /** 紐づく年間目標(攻撃行動向け) */
+  goalId?: string;
+  /** 一回きりの期限(YYYY-MM-DD)。完了すると archived になる */
+  deadline?: string;
+  /** 繰り返し行動の目安間隔(日)。前回完了からの経過で必要度が上がる */
+  intervalDays?: number;
+  archived?: boolean;
+  createdAt: number;
 }
 
-export interface WorkoutSet {
-  weight: number; // kg(自重種目は 0 でよい。任意で加重ぶんを入れてもよい)
-  reps: number;
-}
-
-export interface WorkoutLog {
+/** その日やってはいけないこと */
+export interface Ban {
   id: string;
-  date: string; // YYYY-MM-DD
-  exerciseId: string;
-  exerciseName: string;
-  category: ExerciseCategory;
-  sets: WorkoutSet[];
-  minutes?: number; // 有酸素用
-  baseExp: number;
-  earnedExp: number; // コンディション補正後
-  earnedGold: number;
-  statGains: Partial<Stats>;
-  /** 取り消し用の巻き戻し情報。タイプミス(40→400kg)を当日中なら無かったことに
-   *  できるよう、この記録が変化させた状態のスナップショットを持つ。 */
-  undo?: WorkoutUndo;
+  title: string;
+  archived?: boolean;
+  createdAt: number;
 }
 
-/** 記録時点の状態スナップショット。最新の記録を丸ごと巻き戻すために使う */
-export interface WorkoutUndo {
-  streak: { count: number; lastDate: string | null };
-  boss: { index: number; hp: number };
-  defeatedBoss: boolean;
-  bossGold: number;
-  bossExp: number;
-  partGain: number;
-  playerHp: number;
-  /** 0 = この種目の自己ベストは未登録だった */
-  prevBestVolume: number;
-  prevBestDayExp: number;
-  prevBestStreak: number;
-  expBoostUsed: boolean;
-  shieldUsed: boolean;
-}
-
-export type MealSlot = "morning" | "noon" | "night" | "snack";
-
-export interface MealLog {
+export interface YearGoal {
   id: string;
+  title: string;
+  /** なりたい姿・理由 */
+  why: string;
+}
+
+export interface MonthPlan {
+  /** YYYY-MM */
+  month: string;
+  /** 余力のうち攻撃行動へ回す配分の目安(0〜1)。防御の必要量が優先される */
+  offenseShare: number;
+  /** goalId -> 重み(0〜3) */
+  goalWeights: Record<string, number>;
+  /** 今月のテーマ・メモ */
+  note: string;
+}
+
+export type Busy = "free" | "normal" | "busy";
+export type Priority = "off" | "normal" | "high";
+
+export interface WeekPlan {
+  /** 週の開始日(月曜, YYYY-MM-DD) */
+  weekStart: string;
+  busy: Busy;
+  /** actionId -> 優先度。未指定は normal */
+  priorities: Record<string, Priority>;
+}
+
+/** pending=カードに載っている / done=完了 / skipped=やらずに上納された */
+export type Outcome = "pending" | "done" | "skipped";
+
+/** カードに載ったステッカー1枚 */
+export interface Draw {
+  id: string;
+  at: number;
+  actionId: string;
+  outcome: Outcome;
+  /** どの日のカードか(YYYY-MM-DD) */
+  cardDate: string;
+  resolvedAt?: number;
+}
+
+/** 1日1枚のカード(台紙)。日付が変わると上納される */
+export interface DailyCard {
   date: string;
-  name: string;
-  protein: number; // g
-  fat: number; // g
-  carb: number; // g
-  calories: number;
-  slot?: MealSlot;
-  /** かんたん記録などの概算値か(表示に「約」を付ける) */
-  estimated?: boolean;
-  /** バーコードスキャン由来の記録。修正時にコミュニティDBへ反映できる */
-  barcode?: string;
+  drawIds: string[];
+  banId?: string;
+  banBroken: boolean;
+  tributed: boolean;
+  drawnAt: number;
 }
 
-export type SleepQuality = "good" | "normal" | "poor";
-
-export interface SleepLog {
-  date: string;
-  quality: SleepQuality;
-}
-
-export type Goal = "bulk" | "cut" | "keep";
-
-export interface Profile {
-  name: string;
-  heightCm: number;
-  weightKg: number;
-  goal: Goal;
-  /** 週間トレーニング予定日(0=日〜6=土)。ストリークはこの予定日基準で判定する。
-   *  未設定の既存プロフィールは既定スケジュール(週3)として扱う。 */
-  trainingDays?: number[];
-}
-
-export interface Avatar {
-  level: number;
-  totalExp: number;
-  expIntoLevel: number;
-  expForNextLevel: number;
-  stats: Stats;
-  gold: number;
-}
+/** 抽選の内部で使う調子。前日のカードの消化具合から推定する */
+export type Mood = "tired" | "normal" | "hyper";
