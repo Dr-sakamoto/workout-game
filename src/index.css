@@ -271,10 +271,11 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .history-items .ok { color: var(--text); }
 .handle-guide {
   position: absolute; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
-  border: 2px dashed rgba(26, 26, 26, 0.45); animation: guide 2.4s linear infinite;
+  border: 2px dashed rgba(255, 255, 255, 0.9); animation: guide 2.4s linear infinite;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
 }
 .handle-guide::after {
   content: ""; position: absolute; right: -9px; top: 50%; border: 8px solid transparent;
-  border-top: 11px solid rgba(26, 26, 26, 0.7); transform: translateY(-30%);
+  border-top: 11px solid rgba(255, 255, 255, 0.95); transform: translateY(-30%);
 }
 @keyframes guide { to { transform: translate(-50%, -50%) rotate(360deg); } }

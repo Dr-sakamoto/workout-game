@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { agedGlass, agedMetal, agedPaint } from "./aging";
 import { sound } from "../lib/sound";
 
 export interface SceneCallbacks {
@@ -16,7 +16,9 @@ export interface SceneCallbacks {
   onHandleMoved?: (x: number, y: number, radius: number) => void;
 }
 
-const RED = "#c41d27";
+const RED = "#8e1016";
+/** 取り出し口の高さ */
+const EXIT_Y = 0.735;
 
 const ease = {
   outCubic: (t: number) => 1 - Math.pow(1 - t, 3),
@@ -51,31 +53,27 @@ float noise(vec2 p) {
   return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
 }
 float fbm(vec2 p) {
-  float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+  // 細かいディテールを入れず、大きくぼやけた塊だけにする
+  float v = 0.0, a = 0.55;
+  for (int i = 0; i < 3; i++) { v += a * noise(p); p = p * 1.9 + 17.1; a *= 0.45; }
   return v;
 }
 
 void main() {
   vec2 uv = vUv * vec2(uRes.x / uRes.y, 1.0);
-  float t = uTime * 0.04;
-  // ドメインワープで雲のようにうねらせる
-  vec2 q = vec2(fbm(uv * 1.6 + vec2(t, -t)), fbm(uv * 1.6 + vec2(-t * 0.7, t * 1.3) + 5.2));
-  float n = fbm(uv * 1.3 + q * 2.2 + vec2(t * 0.5, t * 0.2));
-  float cloud = smoothstep(0.5, 0.86, n);
+  vec2 p = uv * 2.6;
+  // 参考動画の0.5倍速くらいで、塊がゆっくり流れながら形を変える
+  float t = uTime * 0.2;
+  vec2 q = vec2(fbm(p + vec2(0.0, t)), fbm(p + vec2(5.2, -t * 0.8)));
+  vec2 r = vec2(fbm(p + 2.0 * q + vec2(1.7, 9.2) + t * 0.6), fbm(p + 2.0 * q + vec2(8.3, 2.8) - t * 0.5));
+  float n = fbm(p + 2.0 * r);
+  float blob = smoothstep(0.38, 0.8, n);
 
-  // 虹色(ホログラム)。雲の中で色相がずれていく
-  float h = n * 2.6 + q.x * 1.5 + uTime * 0.03;
-  vec3 rainbow = 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67)));
-  vec3 pastel = mix(vec3(1.0), rainbow, 0.5);
-
-  // プリズムの細い光の筋
-  float streak = sin((uv.x * 0.8 + uv.y) * 38.0 + q.y * 12.0 + uTime * 0.4);
-  float prism = smoothstep(0.92, 1.0, streak) * cloud;
-
-  vec3 col = mix(vec3(1.0), pastel, cloud * 0.45);
-  col += prism * 0.18 * rainbow;
-  gl_FragColor = vec4(min(col, vec3(1.0)), 1.0);
+  // プリズムの色。塊の中で色相がゆっくり回る
+  float h = n * 1.8 + r.x * 1.2 + uTime * 0.02;
+  vec3 prism = 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67)));
+  vec3 col = mix(vec3(1.0), mix(vec3(1.0), prism, 0.6), blob * 0.42);
+  gl_FragColor = vec4(col, 1.0);
 }`;
 
 // ---------- 部品 ----------
@@ -94,6 +92,29 @@ function capsuleMaterial(kira: number) {
     default:
       return new THREE.MeshPhysicalMaterial({ color: "#f4f4f6", roughness: 0.35, clearcoat: 0.8 });
   }
+}
+
+/**
+ * 金属の映り込み用のスタジオ。暗い部屋に細長いライトを置いて、
+ * 反射にくっきりした明暗(コントラスト)が出るようにする
+ */
+function studio() {
+  const room = new THREE.Scene();
+  room.background = new THREE.Color("#18181c");
+  const light = (w: number, h: number, x: number, y: number, z: number, ry: number, rx = 0, power = 1) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(power, power, power), side: THREE.DoubleSide }),
+    );
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, 0);
+    room.add(m);
+  };
+  light(8, 3, 0, 6, 0, 0, Math.PI / 2, 3); // 天井のソフトボックス
+  light(1.2, 7, -5, 2, 2, Math.PI / 2, 0, 4); // 左のストリップ
+  light(1.2, 7, 5, 2, -1, -Math.PI / 2, 0, 2.5); // 右のストリップ
+  light(16, 5, 0, 1, 7, Math.PI, 0, 1.6); // カメラ側の大きな光。正面を向いた平らな金属が真っ黒にならないように
+  return room;
 }
 
 /** 上半分=キラ度に応じた質感、下半分=半透明のカプセル */
@@ -130,7 +151,7 @@ export class GachaScene {
   private machine = new THREE.Group();
   private rotor = new THREE.Group();
   private handleHit: THREE.Mesh;
-  private handleCenter = new THREE.Vector3(0, 1.71, 0.75);
+  private handleCenter = new THREE.Vector3(0, 1.57, 0.75);
   private pile: THREE.Group[] = [];
   private capsule?: THREE.Group;
   private bits: { mesh: THREE.Mesh; v: THREE.Vector3 }[] = [];
@@ -195,10 +216,10 @@ export class GachaScene {
     const s = this.scene;
     // 金属・ホロのカプセルが映り込むように環境マップを入れる
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    s.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    s.environment = pmrem.fromScene(studio(), 0.02).texture;
     pmrem.dispose();
-    s.add(new THREE.HemisphereLight("#ffffff", "#e4e4ea", 0.9));
-    const key = new THREE.DirectionalLight("#ffffff", 1.2);
+    s.add(new THREE.HemisphereLight("#ffffff", "#e4e4ea", 0.8));
+    const key = new THREE.DirectionalLight("#ffffff", 1.5);
     key.position.set(3, 8, 6);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -226,61 +247,67 @@ export class GachaScene {
     return mesh;
   }
 
-  /** ラフの比率(200px = 1)に合わせて組む。赤い胴体・メタル・ガラス */
+  /** ラフの比率(200px = 1)を少し低めにして組む。使い込まれた赤い胴体とフタ・メタル・青緑のガラス */
   private buildMachine() {
-    const red = new THREE.MeshPhysicalMaterial({ color: RED, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2 });
-    const metal = new THREE.MeshStandardMaterial({ color: "#c9cdd3", metalness: 1, roughness: 0.22 });
+    const paint = agedPaint(RED);
+    const red = new THREE.MeshPhysicalMaterial({
+      color: "#ffffff", map: paint.map, roughness: 1, roughnessMap: paint.roughnessMap,
+      clearcoat: 0.35, clearcoatRoughness: 0.4,
+    });
+    const steel = agedMetal("#d8dce2");
+    const metal = new THREE.MeshStandardMaterial({
+      color: "#ffffff", map: steel.map, metalness: 1, roughness: 1, roughnessMap: steel.roughnessMap,
+      envMapIntensity: 1.5,
+    });
 
     // 脚
     for (const x of [-0.75, 0.75]) this.part(new RoundedBoxGeometry(0.16, 0.24, 0.3, 3, 0.03), metal, x, 0.12);
     // 胴体
-    this.part(new RoundedBoxGeometry(2.09, 2.06, 1.4, 5, 0.1), red, 0, 1.255);
+    this.part(new RoundedBoxGeometry(2.09, 1.85, 1.4, 5, 0.1), red, 0, 1.165);
 
-    // ハンドル: メタルの円盤 + つまみ
+    // ハンドル: メタルの円盤 + 太めのつまみ
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.035, 16, 64), metal);
     ring.position.copy(this.handleCenter).setZ(0.71);
     this.machine.add(ring);
     const disk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.08, 64), metal);
     disk.rotation.x = Math.PI / 2;
     disk.castShadow = true;
-    const grip = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.14, 0.16, 3, 0.05), metal);
-    grip.position.z = 0.1;
+    const grip = new THREE.Mesh(new RoundedBoxGeometry(0.64, 0.2, 0.2, 3, 0.07), metal);
+    grip.position.z = 0.11;
     grip.castShadow = true;
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 24, 12), red);
-    cap.position.z = 0.18;
-    this.rotor.add(disk, grip, cap);
+    this.rotor.add(disk, grip);
     this.rotor.position.copy(this.handleCenter);
     this.machine.add(this.rotor);
 
     // 取り出し口: メタルの枠 + 暗い穴
-    this.part(new RoundedBoxGeometry(0.72, 0.68, 0.08, 3, 0.03), metal, 0, 0.775, 0.7);
-    const hole = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.52), new THREE.MeshBasicMaterial({ color: "#1b1b1f" }));
-    hole.position.set(0, 0.775, 0.7415);
+    this.part(new RoundedBoxGeometry(0.7, 0.62, 0.08, 3, 0.03), metal, 0, EXIT_Y, 0.7);
+    const hole = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.47), new THREE.MeshBasicMaterial({ color: "#121214" }));
+    hole.position.set(0, EXIT_Y, 0.7415);
     this.machine.add(hole);
 
-    // ガラスケース + メタルのフタ
+    // ガラスケース(うっすら青緑) + 台座 + 四隅の柱
+    this.part(new RoundedBoxGeometry(1.5, 0.06, 1.2, 3, 0.02), metal, 0, 2.12);
     const glass = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 1.59, 1.1),
+      new THREE.BoxGeometry(1.4, 1.3, 1.1),
       new THREE.MeshPhysicalMaterial({
-        color: "#eef6ff", roughness: 0.03, metalness: 0, transparent: true, opacity: 0.16,
+        color: "#8fd3c8", roughness: 0.35, roughnessMap: agedGlass(), transparent: true, opacity: 0.24,
         clearcoat: 1, envMapIntensity: 1.6, depthWrite: false,
       }),
     );
-    glass.position.set(0, 3.08, 0);
+    glass.position.set(0, 2.8, 0);
     glass.renderOrder = 2;
     this.machine.add(glass);
-    this.part(new RoundedBoxGeometry(1.5, 0.1, 1.2, 3, 0.04), metal, 0, 3.925);
-    this.part(new RoundedBoxGeometry(1.5, 0.06, 1.2, 3, 0.02), metal, 0, 2.31);
-    // ガラスの四隅の柱
     for (const [x, z] of [[-0.7, 0.55], [0.7, 0.55], [-0.7, -0.55], [0.7, -0.55]]) {
-      this.part(new THREE.CylinderGeometry(0.025, 0.025, 1.59, 12), metal, x, 3.08, z);
+      this.part(new THREE.CylinderGeometry(0.025, 0.025, 1.3, 12), metal, x, 2.8, z);
     }
+    // 胴体と同じ素材の赤いフタ(厚め)
+    this.part(new RoundedBoxGeometry(1.64, 0.34, 1.32, 4, 0.06), red, 0, 3.62);
 
     // ケースの中のカプセル(ラフの丸の配置)
     const spots: [number, number, number, number][] = [
       // x, y, z, r
-      [-0.32, 2.56, 0.1, 0.22], [0.08, 2.59, 0.12, 0.25], [0.4, 2.54, -0.05, 0.22],
-      [-0.3, 2.92, -0.1, 0.2], [0.12, 2.98, -0.15, 0.2], [0.36, 2.92, 0.1, 0.12], [0.5, 2.98, -0.25, 0.09],
+      [-0.32, 2.37, 0.1, 0.22], [0.08, 2.4, 0.12, 0.25], [0.4, 2.37, -0.05, 0.22],
+      [-0.3, 2.73, -0.1, 0.2], [0.12, 2.79, -0.15, 0.2], [0.36, 2.68, 0.1, 0.12], [0.5, 2.66, -0.25, 0.09],
     ];
     spots.forEach(([x, y, z, r], i) => {
       const c = makeCapsule(r, [1, 4, 2, 1, 3, 4, 1][i]);
@@ -311,10 +338,10 @@ export class GachaScene {
     // 上の領域を基準に画角を決め、下は描画だけ延長する
     this.camera.setViewOffset(w, topH, 0, 0, w, h);
     const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const distH = (4.0 * 1.15) / 2 / tan;
+    const distH = (3.9 * 1.15) / 2 / tan;
     const distW = (2.1 * 1.45) / 2 / (tan * this.camera.aspect);
     const dist = Math.max(distH, distW);
-    const target = new THREE.Vector3(0, 1.98, 0);
+    const target = new THREE.Vector3(0, 1.9, 0);
     const dir = new THREE.Vector3(0.08, 0.16, 1).normalize();
     this.camera.position.copy(target).addScaledVector(dir, dist);
     this.camera.lookAt(target);
@@ -444,7 +471,7 @@ export class GachaScene {
 
     const r = 0.26;
     const cap = makeCapsule(r, kira);
-    cap.position.set(0, 0.775, 0.5);
+    cap.position.set(0, EXIT_Y, 0.5);
     cap.scale.setScalar(0.8);
     this.scene.add(cap);
     this.capsule = cap;
@@ -460,7 +487,7 @@ export class GachaScene {
       const z = 1.1 + 1.1 * ease.outCubic(k);
       const s = 0.8 + 0.8 * ease.outCubic(k);
       const b = k < 0.45 ? 1 - Math.pow(k / 0.45, 2) : k < 0.8 ? Math.sin(((k - 0.45) / 0.35) * Math.PI) * 0.3 : 0;
-      cap.position.set(0, landY + (0.775 - landY) * Math.max(0, b), z);
+      cap.position.set(0, landY + (EXIT_Y - landY) * Math.max(0, b), z);
       cap.scale.setScalar(s);
       cap.rotation.x = k * Math.PI * 3;
       if (Math.abs(k - 0.45) < 0.02) sound.drop();
