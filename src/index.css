@@ -1,16 +1,14 @@
 :root {
-  --bg: #14121c;
-  --surface: #1f1c2b;
-  --surface-2: #2a2639;
+  --bg: #1d1730;
+  --surface: #2a2340;
+  --surface-2: #362d52;
   --text: #f2eff8;
   --muted: #a39cb8;
-  --line: #3a3550;
+  --line: #4a3f6b;
   --accent: #f5c542;
   --pink: #ff5d73;
   --danger: #ff6b6b;
-  --r: #7ad08f;
-  --sr: #b48cff;
-  --ssr: #f5c542;
+  --stamp: #d8202a;
   color-scheme: dark;
 }
 
@@ -72,61 +70,214 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .chip.off { opacity: 0.5; }
 
 
-.tabbar {
-  display: flex; border-top: 1px solid var(--line); background: var(--surface);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.tabbar button {
-  flex: 1; border: none; border-radius: 0; background: none; color: var(--muted);
-  display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; padding: 8px 0 10px;
-}
-.tabbar button.active { color: var(--accent); }
-.tab-icon { font-size: 18px; }
+.nowrap { white-space: nowrap; }
 
-/* ガチャ画面 */
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stats div { background: var(--surface); border-radius: 12px; padding: 10px; text-align: center; display: flex; flex-direction: column; }
-.stats b { font-size: 22px; }
-.stats span { font-size: 11px; color: var(--muted); }
+/* ===== ホーム(3D) ===== */
+.home { position: fixed; inset: 0; overflow: hidden; background: linear-gradient(#171229, #2a2140 70%); }
+.world { position: absolute; inset: 0; }
+.world canvas { display: block; }
+.hint-top {
+  position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 12px;
+  font-size: 11px; color: var(--muted); opacity: 0.7; pointer-events: none;
+}
+.hint {
+  position: absolute; left: 0; right: 0; bottom: calc(var(--card-area) + 6px); text-align: center;
+  font-weight: 700; font-size: 15px; pointer-events: none; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.hint.pulse { animation: pulse 0.9s ease-in-out infinite; bottom: calc(var(--card-area) - 120px); }
+@keyframes pulse { 50% { transform: scale(1.12); } }
+.toast {
+  position: absolute; left: 50%; top: 40%; transform: translateX(-50%); background: rgba(20, 16, 34, 0.92);
+  padding: 10px 16px; border-radius: 99px; font-size: 13px; white-space: nowrap; pointer-events: none;
+  animation: fadein 0.2s;
+}
+@keyframes fadein { from { opacity: 0; } }
+.flash { position: absolute; inset: 0; background: #fff; pointer-events: none; animation: flash 0.7s ease-out forwards; }
+@keyframes flash { from { opacity: 0.85; } to { opacity: 0; } }
 
-.machine { display: flex; flex-direction: column; align-items: center; padding: 40px 0 0; }
-.capsule {
-  position: relative; width: 220px; height: 220px; border-radius: 50%; padding: 0; border: none;
-  overflow: hidden; background: none; box-shadow: 0 10px 40px rgba(245, 197, 66, 0.25);
+.card-area {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom)); pointer-events: none;
 }
-.capsule-top, .capsule-bottom { position: absolute; left: 0; right: 0; height: 50%; }
-.capsule-top { top: 0; background: var(--pink); }
-.capsule-bottom { bottom: 0; background: var(--accent); border-top: 10px solid var(--bg); }
-.capsule-label {
-  position: absolute; inset: 0; margin: auto; width: 96px; height: 96px; border-radius: 50%;
-  background: var(--bg); color: var(--text); display: grid; place-items: center; font-size: 22px; font-weight: 800;
-  border: 6px solid #fff;
-}
-.capsule.spinning { animation: shake 0.9s ease-in-out; }
-@keyframes shake {
-  0%, 100% { transform: rotate(0); }
-  20% { transform: rotate(-14deg) scale(1.03); }
-  40% { transform: rotate(12deg); }
-  60% { transform: rotate(-8deg) scale(1.05); }
-  80% { transform: rotate(5deg); }
+.card-area > * { pointer-events: auto; }
+.card-slot {
+  width: min(400px, 100%); height: 85%; border: 2px dashed rgba(255, 255, 255, 0.18); border-radius: 18px;
+  display: grid; place-items: center; color: var(--muted); font-size: 13px;
 }
 
-.result {
-  margin-top: 20px; background: var(--surface); border-radius: 20px; padding: 20px;
-  border: 2px solid var(--line); animation: pop 0.35s ease-out;
+/* ===== カード(台紙) ===== */
+.daily-card {
+  position: relative; width: min(400px, 100%); color: #3a2a1a;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120, 90, 50, 0.12) 1px, transparent 0) 0 0 / 10px 10px,
+    linear-gradient(#fffaf0, #f6ecd7);
+  border-radius: 18px; padding: 10px 10px 12px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), inset 0 0 0 2px #fff;
+  animation: card-in 0.6s cubic-bezier(0.2, 1.2, 0.4, 1) both;
 }
-.result.rarity-R { border-color: var(--r); }
-.result.rarity-SR { border-color: var(--sr); box-shadow: 0 0 24px color-mix(in srgb, var(--sr) 40%, transparent); }
-.result.rarity-SSR { border-color: var(--ssr); box-shadow: 0 0 36px color-mix(in srgb, var(--ssr) 55%, transparent); }
-@keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.result-head { display: flex; align-items: center; gap: 8px; }
-.rarity { font-weight: 900; font-size: 18px; letter-spacing: 1px; }
-.rarity-N .rarity { color: var(--muted); }
-.rarity-R .rarity { color: var(--r); }
-.rarity-SR .rarity { color: var(--sr); }
-.rarity-SSR .rarity { color: var(--ssr); }
-.starter { background: var(--bg); border-radius: 12px; padding: 12px; margin: 12px 0 8px; }
-.starter p { margin: 4px 0 0; font-size: 16px; line-height: 1.6; }
-.reasons { margin: 4px 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
-.result .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.result .actions .primary { margin-top: 0; }
+@keyframes card-in { from { transform: translateY(70%) scale(0.85); opacity: 0; } }
+.daily-card.shake { animation: shake 0.25s; }
+@keyframes shake { 30% { transform: translateY(3px); } 60% { transform: translateY(-1px); } }
+.card-head {
+  display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700;
+  color: #8a6a40; padding: 2px 4px 8px; min-height: 26px;
+}
+.card-head.asking { justify-content: center; color: var(--stamp); font-size: 14px; animation: fadein 0.2s; }
+.card-count { background: #8a6a40; color: #fff; border-radius: 99px; padding: 1px 8px; }
+.card-empty { grid-column: 1 / -1; text-align: center; color: #8a6a40; font-size: 13px; }
+
+.stickers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.sticker {
+  position: relative; aspect-ratio: 3 / 4.4; border-radius: 12px; padding: 3px; cursor: pointer;
+  background: #fff; box-shadow: 0 2px 4px rgba(80, 50, 20, 0.25), 0 0 0 1px rgba(80, 50, 20, 0.08);
+  animation: sticker-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes sticker-in { from { transform: scale(0.2) rotate(-20deg); opacity: 0; } }
+.sticker-face {
+  position: relative; height: 100%; border-radius: 9px; overflow: hidden; padding: 7px 5px;
+  display: flex; flex-direction: column; gap: 4px; background: #fff;
+}
+.sticker-title {
+  position: relative; z-index: 1; font-size: 11px; font-weight: 800; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sticker-starter {
+  position: relative; z-index: 1; font-size: 9.5px; line-height: 1.35; color: #6b5a48; margin-top: auto;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sticker.asking { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--stamp), 0 6px 12px rgba(0, 0, 0, 0.25); }
+
+/* キラ度(楽しさ) */
+.kira-2 .sticker-face { background: linear-gradient(135deg, #f4f6fa, #d5dbe6 45%, #fafbfd 55%, #c9d1df); }
+.kira-3 .sticker-face { background: linear-gradient(135deg, #fff3c4, #f1c75a 40%, #fff6d6 52%, #e0a93a); }
+.kira-3 .sticker-starter { color: #6a4a10; }
+.kira-4 .sticker-face {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.7), transparent 45%),
+    linear-gradient(125deg, #ffb3e6, #b3d4ff 25%, #b3ffd9 50%, #fff1b3 75%, #ffb3c7);
+  animation: holo 3s linear infinite;
+}
+@keyframes holo { to { filter: hue-rotate(360deg); } }
+.kira-2 .sticker-face::after, .kira-3 .sticker-face::after, .kira-4 .sticker-face::after {
+  content: ""; position: absolute; inset: -50%; z-index: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.85) 50%, transparent 60%);
+  animation: shine 3.2s ease-in-out infinite;
+}
+.kira-3 .sticker-face::after { animation-duration: 2.6s; }
+.kira-4 .sticker-face::after { animation-duration: 2s; }
+@keyframes shine { 0%, 40% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+.sparkle {
+  position: absolute; z-index: 2; width: 10px; height: 10px; pointer-events: none;
+  background: #fff; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  animation: twinkle 1.8s ease-in-out infinite; filter: drop-shadow(0 0 3px #fff);
+}
+@keyframes twinkle { 0%, 100% { transform: scale(0); opacity: 0; } 50% { transform: scale(1) rotate(45deg); opacity: 1; } }
+
+.sticker-confirm {
+  position: absolute; left: 3px; right: 3px; bottom: 3px; z-index: 3; display: flex; flex-direction: column; gap: 4px;
+  animation: fadein 0.15s;
+}
+.sticker-confirm button, .ban-confirm button {
+  padding: 5px 0; font-size: 12px; font-weight: 700; border-radius: 8px; background: #fff; color: #3a2a1a;
+  border: 1px solid #c8b89c;
+}
+.sticker-confirm .yes, .ban-confirm .yes { background: var(--stamp); color: #fff; border-color: var(--stamp); }
+
+/* 完了の印影 */
+.imprint {
+  position: absolute; left: 50%; top: 50%; z-index: 4; pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-14deg);
+  width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--stamp); border: 3px solid var(--stamp); box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px var(--stamp);
+  font-size: 17px; font-weight: 900; letter-spacing: 1px; background: rgba(255, 255, 255, 0.2);
+  opacity: 0.88; mix-blend-mode: multiply; animation: imprint 0.3s ease-out both;
+}
+@keyframes imprint {
+  from { transform: translate(-50%, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
+  to { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.88; }
+}
+.sticker.done .sticker-face { filter: saturate(0.7) brightness(0.97); }
+
+/* ハンコ */
+.stamp-tool {
+  position: absolute; left: 50%; bottom: calc(100% - 6px); z-index: 5; width: 46px; height: 64px;
+  transform: translateX(-50%); pointer-events: none; animation: stamp-hover 1s ease-in-out infinite;
+  filter: drop-shadow(0 8px 6px rgba(0, 0, 0, 0.35));
+}
+.stamp-knob { position: absolute; left: 13px; top: 0; width: 20px; height: 20px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #e9c48f, #a26b33); }
+.stamp-neck { position: absolute; left: 17px; top: 16px; width: 12px; height: 26px; border-radius: 4px; background: linear-gradient(90deg, #a26b33, #d9a86b, #a26b33); }
+.stamp-base { position: absolute; left: 3px; top: 40px; width: 40px; height: 20px; border-radius: 6px; background: linear-gradient(#5b3d22, #3b2614); box-shadow: inset 0 -5px 0 var(--stamp); }
+@keyframes stamp-hover { 50% { transform: translateX(-50%) translateY(-6px) rotate(-4deg); } }
+.stamp-tool.pressing { animation: stamp-press 0.6s ease-in forwards; }
+@keyframes stamp-press {
+  0% { transform: translateX(-50%) translateY(-10px); }
+  45% { transform: translateX(-50%) translateY(calc(50% + 40px)) scaleY(0.92); }
+  60% { transform: translateX(-50%) translateY(calc(50% + 36px)); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
+}
+.ban .stamp-tool.pressing { animation-name: stamp-press-ban; }
+@keyframes stamp-press-ban {
+  0% { transform: translateX(-50%) translateY(-10px); }
+  45% { transform: translateX(-50%) translateY(46px) scaleY(0.92); }
+  60% { transform: translateX(-50%) translateY(42px); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
+}
+
+/* 禁止事項の帯 */
+.ban {
+  position: relative; margin-top: 10px; min-height: 58px; border-radius: 10px; padding: 8px 10px 8px 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; color: #fff; background: #2b2233;
+  box-shadow: inset 0 0 0 4px #2b2233, inset 0 0 0 7px #ffd23f;
+  background-image: repeating-linear-gradient(-45deg, #2b2233 0 10px, #33293d 10px 20px);
+  animation: sticker-in 0.45s 0.8s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.ban.asking { box-shadow: inset 0 0 0 4px #2b2233, inset 0 0 0 7px var(--stamp), 0 0 0 3px var(--stamp); }
+.ban-label { flex: none; font-size: 10px; font-weight: 800; color: #2b2233; background: #ffd23f; padding: 3px 7px; border-radius: 6px; }
+.ban-title { flex: 1; font-weight: 800; font-size: 14px; line-height: 1.3; }
+.ban-confirm { display: flex; gap: 6px; flex: none; }
+.ban-confirm button { padding: 6px 12px; }
+.ban .imprint { width: 56px; height: 56px; font-size: 15px; left: auto; right: 20px; transform: translate(0, -50%) rotate(-14deg); mix-blend-mode: normal; background: rgba(255, 255, 255, 0.85); animation-name: imprint-ban; }
+@keyframes imprint-ban {
+  from { transform: translate(0, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
+  to { transform: translate(0, -50%) rotate(-14deg) scale(1); opacity: 0.92; }
+}
+.ban.broken .ban-title { text-decoration: line-through; opacity: 0.7; }
+
+/* 上納 */
+.daily-card.mode-tribute { animation: tribute 2.2s ease-in forwards; }
+@keyframes tribute {
+  0% { transform: none; }
+  35% { transform: translateY(-14px) scale(1.03); box-shadow: 0 0 50px rgba(255, 210, 63, 0.9); }
+  100% { transform: translateY(-62vh) scale(0.12) rotate(-10deg); opacity: 0; }
+}
+.tribute-label {
+  position: absolute; inset: 0; display: grid; place-items: center; font-size: 56px; font-weight: 900; color: #c8102e;
+  text-shadow: 0 0 0 #fff, 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+  animation: tribute-label 0.35s 0.2s ease-out both; pointer-events: none;
+}
+@keyframes tribute-label { from { transform: scale(1.8) rotate(-8deg); opacity: 0; } to { transform: rotate(-8deg); } }
+
+/* ===== 設定シート ===== */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.5); animation: fadein 0.2s; }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; top: calc(40px + env(safe-area-inset-top)); max-width: 560px; margin: 0 auto;
+  background: var(--bg); border-radius: 20px 20px 0 0; display: flex; flex-direction: column;
+  animation: sheet-in 0.3s cubic-bezier(0.2, 1, 0.4, 1);
+}
+@keyframes sheet-in { from { transform: translateY(100%); } }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 4px; }
+.sheet-head h2 { margin: 0; }
+.sheet-tabs { display: flex; gap: 6px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.sheet-tabs button { flex: none; padding: 6px 14px; border-radius: 99px; font-size: 13px; }
+.sheet-tabs button.active { background: var(--accent); color: #1a1500; border-color: var(--accent); }
+.sheet-body { flex: 1; overflow-y: auto; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); }
+.history-items { list-style: none; padding: 0; margin: 6px 0; font-size: 13px; color: var(--muted); }
+.history-items .ok { color: var(--text); }
+.handle-guide {
+  position: absolute; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  border: 3px dashed rgba(255, 210, 63, 0.75); animation: guide 2.4s linear infinite;
+}
+.handle-guide::after {
+  content: ""; position: absolute; right: -9px; top: 50%; border: 8px solid transparent;
+  border-top: 11px solid rgba(255, 210, 63, 0.95); transform: translateY(-30%);
+}
+@keyframes guide { to { transform: translate(-50%, -50%) rotate(360deg); } }

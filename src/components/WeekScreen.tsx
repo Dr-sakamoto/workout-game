@@ -21,6 +21,7 @@ export function WeekScreen() {
   const start = parseYmd(week.weekStart).getTime();
   const weekDraws = s.draws.filter((d) => d.at >= start);
   const count = (o: string) => weekDraws.filter((d) => d.outcome === o).length;
+  const weekCards = s.cards.filter((c) => c.date >= week.weekStart);
   const active = s.actions.filter((a) => !a.archived);
 
   return (
@@ -39,7 +40,11 @@ export function WeekScreen() {
 
       <div className="card">
         <p className="muted">
-          今週: やった {count("done")} ・ パス {count("skipped")} ・ 脱線 {count("detour")}
+          今週: 完了 {count("done")} ・ やらずに上納 {count("skipped")}
+        </p>
+        <p className="muted">
+          禁止事項: 守った {weekCards.filter((c) => c.tributed && !c.banBroken).length}日 ・ 破った{" "}
+          {weekCards.filter((c) => c.banBroken).length}日
         </p>
       </div>
 
@@ -75,18 +80,6 @@ export function WeekScreen() {
         })}
       </ul>
 
-      {count("detour") > 0 && (
-        <>
-          <h3>今週の脱線</h3>
-          <ul className="list">
-            {weekDraws.filter((d) => d.outcome === "detour").map((d) => (
-              <li key={d.id} className="row">
-                <span>{d.detourNote || "(メモなし)"}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   );
 }

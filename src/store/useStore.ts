@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Action, Draw, Mood, MonthPlan, Priority, WeekPlan, YearGoal, Busy } from "../domain/types";
-import { actionsForGoal, inferKind } from "../domain/presets";
-import { draw as runDraw } from "../domain/engine";
-import { weekStartOf, ym } from "../domain/dates";
+import type { Action, Ban, Busy, DailyCard, Draw, MonthPlan, Priority, WeekPlan, YearGoal } from "../domain/types";
+import { BAN_PRESETS, actionsForGoal, inferKind } from "../domain/presets";
+import { drawStickers, pickBan } from "../domain/engine";
+import { weekStartOf, ym, ymd } from "../domain/dates";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -12,28 +12,33 @@ type ActionInput = Omit<NewAction, "kind">;
 
 interface State {
   onboarded: boolean;
-  year: number;
   goals: YearGoal[];
   actions: Action[];
+  bans: Ban[];
   months: Record<string, MonthPlan>;
   weeks: Record<string, WeekPlan>;
   draws: Draw[];
-  mood: Mood;
+  cards: DailyCard[];
 
-  finishOnboarding: (presets: NewAction[]) => void;
+  finishOnboarding: (presets: NewAction[], bans: string[]) => void;
   addGoal: (title: string, why: string) => void;
   updateGoal: (id: string, patch: Partial<Omit<YearGoal, "id">>) => void;
   removeGoal: (id: string) => void;
   addAction: (a: ActionInput) => void;
   updateAction: (id: string, patch: Partial<ActionInput>) => void;
   removeAction: (id: string) => void;
+  addBan: (title: string) => void;
+  updateBan: (id: string, title: string) => void;
+  removeBan: (id: string) => void;
   setMonth: (patch: Partial<Omit<MonthPlan, "month">>) => void;
   setWeek: (patch: { busy?: Busy }) => void;
   setPriority: (actionId: string, p: Priority) => void;
-  setMood: (m: Mood) => void;
-  spin: () => Draw | undefined;
-  resolve: (drawId: string, outcome: "done" | "skipped") => void;
-  detour: (drawId: string, note: string) => void;
+  /** 今日のカードを引く。すでに引いていれば何もしない */
+  drawCard: (now?: Date) => DailyCard | undefined;
+  completeSticker: (drawId: string) => void;
+  breakBan: (date: string) => void;
+  /** 今日より前のカードを上納する。やらなかったステッカーは skipped になる */
+  tribute: (now?: Date) => void;
 }
 
 export function currentMonth(s: Pick<State, "months" | "goals">, now = new Date()): MonthPlan {
@@ -53,22 +58,36 @@ export function currentWeek(s: Pick<State, "weeks">, now = new Date()): WeekPlan
   return s.weeks[key] ?? { weekStart: key, busy: "normal", priorities: {} };
 }
 
+export function todayCard(s: Pick<State, "cards">, now = new Date()): DailyCard | undefined {
+  const key = ymd(now);
+  return s.cards.find((c) => c.date === key);
+}
+
+/** 日付が変わって上納待ちになっているカード */
+export function staleCards(s: Pick<State, "cards">, now = new Date()): DailyCard[] {
+  const key = ymd(now);
+  return s.cards.filter((c) => !c.tributed && c.date < key);
+}
+
+const newBan = (title: string): Ban => ({ id: uid(), title, createdAt: Date.now() });
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       onboarded: false,
-      year: new Date().getFullYear(),
       goals: [],
       actions: [],
+      bans: [],
       months: {},
       weeks: {},
       draws: [],
-      mood: "normal",
+      cards: [],
 
-      finishOnboarding: (presets) =>
+      finishOnboarding: (presets, bans) =>
         set((s) => ({
           onboarded: true,
           actions: [...s.actions, ...presets.map((p) => ({ ...p, id: uid(), createdAt: Date.now() }))],
+          bans: [...s.bans, ...bans.map(newBan)],
         })),
 
       addGoal: (title, why) =>
@@ -106,6 +125,10 @@ export const useStore = create<State>()(
       removeAction: (id) =>
         set((s) => ({ actions: s.actions.map((a) => (a.id === id ? { ...a, archived: true } : a)) })),
 
+      addBan: (title) => set((s) => ({ bans: [...s.bans, newBan(title)] })),
+      updateBan: (id, title) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, title } : b)) })),
+      removeBan: (id) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, archived: true } : b)) })),
+
       setMonth: (patch) =>
         set((s) => {
           const m = currentMonth(s);
@@ -126,52 +149,91 @@ export const useStore = create<State>()(
           };
         }),
 
-      setMood: (mood) => set({ mood }),
-
-      spin: () => {
+      drawCard: (now = new Date()) => {
+        get().tribute(now);
         const s = get();
-        const now = new Date();
-        const c = runDraw({
+        if (todayCard(s, now)) return undefined;
+        const date = ymd(now);
+        const picked = drawStickers({
           actions: s.actions,
           draws: s.draws,
+          cards: s.cards,
           month: currentMonth(s, now),
           week: currentWeek(s, now),
-          mood: s.mood,
           now,
         });
-        if (!c) return undefined;
-        // 未着手のまま回し直した分は「拒否」として記録する
-        const draws = s.draws.map((d) =>
-          d.outcome === "pending" ? { ...d, outcome: "skipped" as const, resolvedAt: now.getTime() } : d,
-        );
-        const d: Draw = { id: uid(), at: now.getTime(), actionId: c.action.id, rarity: c.rarity, outcome: "pending" };
-        set({ draws: [...draws, d] });
-        return d;
+        const draws: Draw[] = picked.map((a) => ({
+          id: uid(),
+          at: now.getTime(),
+          actionId: a.id,
+          outcome: "pending",
+          cardDate: date,
+        }));
+        const ban = pickBan(s.bans, s.cards, now);
+        const card: DailyCard = {
+          date,
+          drawIds: draws.map((d) => d.id),
+          banId: ban?.id,
+          banBroken: false,
+          tributed: false,
+          drawnAt: now.getTime(),
+        };
+        set({ draws: [...s.draws, ...draws], cards: [...s.cards, card] });
+        return card;
       },
 
-      resolve: (drawId, outcome) =>
+      completeSticker: (drawId) =>
         set((s) => {
           const target = s.draws.find((d) => d.id === drawId);
-          const action = target && s.actions.find((a) => a.id === target.actionId);
+          if (!target || target.outcome !== "pending") return {};
+          const action = s.actions.find((a) => a.id === target.actionId);
           return {
-            draws: s.draws.map((d) => (d.id === drawId ? { ...d, outcome, resolvedAt: Date.now() } : d)),
+            draws: s.draws.map((d) => (d.id === drawId ? { ...d, outcome: "done", resolvedAt: Date.now() } : d)),
             // 期限付きの一回きりタスクは完了したら抽選対象から外す
             actions:
-              outcome === "done" && action?.deadline && !action.intervalDays
+              action?.deadline && !action.intervalDays
                 ? s.actions.map((a) => (a.id === action.id ? { ...a, archived: true } : a))
                 : s.actions,
           };
         }),
 
-      detour: (drawId, note) =>
-        set((s) => ({
-          draws: s.draws.map((d) =>
-            d.id === drawId
-              ? { ...d, outcome: "detour", detourNote: note, resolvedAt: Date.now() }
-              : d,
-          ),
-        })),
+      breakBan: (date) =>
+        set((s) => ({ cards: s.cards.map((c) => (c.date === date ? { ...c, banBroken: true } : c)) })),
+
+      tribute: (now = new Date()) =>
+        set((s) => {
+          const stale = staleCards(s, now);
+          if (stale.length === 0) return {};
+          const ids = new Set(stale.flatMap((c) => c.drawIds));
+          return {
+            cards: s.cards.map((c) => (stale.includes(c) ? { ...c, tributed: true } : c)),
+            draws: s.draws.map((d) =>
+              ids.has(d.id) && d.outcome === "pending" ? { ...d, outcome: "skipped", resolvedAt: now.getTime() } : d,
+            ),
+          };
+        }),
     }),
-    { name: "action-gacha", version: 1 },
+    {
+      name: "action-gacha",
+      version: 2,
+      // v1: 随時ガチャ → v2: 1日1枚のカード制
+      migrate: (persisted, version) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const s = persisted as any;
+        if (version < 2) {
+          s.actions = (s.actions ?? []).map((a: Action) => ({ ...a, fun: a.fun ?? (a.kind === "defense" ? 1 : 2) }));
+          s.draws = (s.draws ?? []).map((d: Draw & { rarity?: string; detourKind?: string; detourNote?: string }) => {
+            const { rarity: _r, detourKind: _k, detourNote: _n, ...rest } = d;
+            const outcome = rest.outcome === "done" ? "done" : "skipped";
+            return { ...rest, outcome, cardDate: ymd(new Date(rest.at)) };
+          });
+          s.bans = s.onboarded ? BAN_PRESETS.map(newBan) : [];
+          s.cards = [];
+          delete s.mood;
+          delete s.year;
+        }
+        return s;
+      },
+    },
   ),
 );

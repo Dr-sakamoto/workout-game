@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
-import type { Action, Energy, Loss } from "../domain/types";
+import type { Action, Energy, Fun, Loss } from "../domain/types";
 
 function Editor({ a }: { a: Action }) {
   const s = useStore();
@@ -10,6 +10,14 @@ function Editor({ a }: { a: Action }) {
       <input value={a.title} onChange={(e) => up({ title: e.target.value })} />
       <label className="muted">最初の一歩(2〜5分)</label>
       <input value={a.starter} onChange={(e) => up({ starter: e.target.value })} />
+      <div className="row">
+        <span className="muted">楽しさ(キラ度)</span>
+        <span className="stepper">
+          {([1, 2, 3, 4] as Fun[]).map((n) => (
+            <button key={n} className={a.fun === n ? "active" : ""} onClick={() => up({ fun: n })}>{"★".repeat(n)}</button>
+          ))}
+        </span>
+      </div>
       <div className="row">
         <span className="muted">しんどさ</span>
         <span className="stepper">
@@ -62,7 +70,7 @@ export function ActionsScreen() {
   const add = () => {
     if (!title.trim()) return;
     s.addAction({
-      title: title.trim(), energy: 2, loss: 1,
+      title: title.trim(), energy: 2, loss: 1, fun: 2,
       starter: "タイマーを3分セットして、とりあえず始める",
     });
     setTitle("");
@@ -71,7 +79,7 @@ export function ActionsScreen() {
   return (
     <div>
       <h1>行動</h1>
-      <p className="muted">基本はいじらなくてOK。気になったときだけ調整してください。</p>
+      <p className="muted">基本はいじらなくてOK。楽しいものほど★を増やすと、ステッカーがキラキラになります。</p>
       <ul className="list">
         {active.map((a) => (
           <li key={a.id}>

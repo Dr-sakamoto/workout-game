@@ -16,7 +16,7 @@ export function MonthScreen() {
 
   const addTask = () => {
     if (!title.trim() || !deadline) return;
-    s.addAction({ title: title.trim(), starter: "必要なものを開いて、最初の1行だけやる", energy: 2, loss, deadline });
+    s.addAction({ title: title.trim(), starter: "必要なものを開いて、最初の1行だけやる", energy: 2, loss, fun: 1, deadline });
     setTitle("");
     setDeadline("");
   };

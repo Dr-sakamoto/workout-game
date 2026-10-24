@@ -1,20 +1,18 @@
-import type { Action, Draw, Mood, MonthPlan, Rarity, WeekPlan } from "./types";
-import { HOUR, daysBetween, daysUntil, weekStartOf, parseYmd } from "./dates";
+import type { Action, Ban, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
+import { HOUR, daysBetween, daysUntil, weekStartOf, parseYmd, ymd } from "./dates";
 
 export interface EngineInput {
   actions: Action[];
   draws: Draw[];
+  cards?: DailyCard[];
   month?: MonthPlan;
   week?: WeekPlan;
-  mood: Mood;
   now: Date;
 }
 
 export interface Candidate {
   action: Action;
   weight: number;
-  rarity: Rarity;
-  reasons: string[];
 }
 
 export interface DrawPlan {
@@ -25,6 +23,9 @@ export interface DrawPlan {
   defense: Candidate[];
   offense: Candidate[];
 }
+
+/** 1枚のカードに載るステッカーの数 */
+export const STICKERS_PER_CARD = 4;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -40,23 +41,20 @@ function lastDoneAt(actionId: string, draws: Draw[]): number | undefined {
 }
 
 /** 防御行動の必要度。0=今は不要 / 1=そろそろ / 1.5=放置すると痛い */
-export function defenseNeed(a: Action, draws: Draw[], now: Date): { need: number; reason?: string } {
+export function defenseNeed(a: Action, draws: Draw[], now: Date): number {
   const lossFactor = a.loss / 2;
   if (a.deadline) {
     const d = daysUntil(a.deadline, now);
-    if (d < 0) return { need: 1.5 * lossFactor, reason: `期限を${-d}日過ぎています` };
-    const need = (1 / (1 + d / 3)) * lossFactor;
-    return { need, reason: d === 0 ? "今日が期限" : `期限まであと${d}日` };
+    if (d < 0) return 1.5 * lossFactor;
+    return (1 / (1 + d / 3)) * lossFactor;
   }
   if (a.intervalDays) {
     // 未実施なら「間隔の3/4が経過済み」とみなし、初日から防御で埋まらないようにする
     const last = lastDoneAt(a.id, draws) ?? a.createdAt - a.intervalDays * 0.75 * 24 * HOUR;
     const ratio = daysBetween(last, now.getTime()) / a.intervalDays;
-    const need = clamp(ratio - 0.5, 0, 1.5) * lossFactor;
-    const reason = ratio >= 1 ? `いつもの間隔(${a.intervalDays}日)を過ぎています` : undefined;
-    return { need, reason };
+    return clamp(ratio - 0.5, 0, 1.5) * lossFactor;
   }
-  return { need: 0.1 * a.loss };
+  return 0.1 * a.loss;
 }
 
 /** 防御の必要量の合計を 0〜1 に圧縮する */
@@ -65,25 +63,29 @@ export function pressureOf(needs: number[]): number {
   return 1 - Math.exp(-total / 3);
 }
 
+/**
+ * 疲労の推定: 直近に上納したカードの消化具合で調子を決める。
+ * ほとんどできなかった翌日は軽い行動、全部できた翌日は重めの行動が出やすい。
+ */
+export function inferMood(cards: DailyCard[], draws: Draw[]): Mood {
+  const last = [...cards].filter((c) => c.tributed).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (!last || last.drawIds.length === 0) return "normal";
+  const done = draws.filter((d) => last.drawIds.includes(d.id) && d.outcome === "done").length;
+  if (done <= 1) return "tired";
+  if (done >= last.drawIds.length) return "hyper";
+  return "normal";
+}
+
 function energyFit(a: Action, mood: Mood, busy: WeekPlan["busy"] | undefined): number {
   const table: Record<Mood, [number, number, number]> = {
-    tired: [1.6, 0.6, 0.15],
+    tired: [1.6, 0.8, 0.3],
     normal: [1, 1, 0.8],
-    hyper: [0.7, 1, 1.6],
+    hyper: [0.8, 1, 1.5],
   };
   let f = table[mood][a.energy - 1];
   if (busy === "busy" && a.energy === 3) f *= 0.5;
   if (busy === "free" && a.energy === 3) f *= 1.3;
   return f;
-}
-
-/** 疲労: 直近3時間でこなした数から気分を一段階下げる */
-export function effectiveMood(mood: Mood, draws: Draw[], now: Date): Mood {
-  const recent = draws.filter(
-    (d) => d.outcome === "done" && now.getTime() - (d.resolvedAt ?? d.at) < 3 * HOUR,
-  ).length;
-  if (recent < 3) return mood;
-  return mood === "hyper" ? "normal" : "tired";
 }
 
 function thisWeek(draws: Draw[], now: Date): Draw[] {
@@ -125,16 +127,9 @@ export function goalBoosts(
   return boosts;
 }
 
-function rarityOf(score: number): Rarity {
-  if (score >= 1.5) return "SSR";
-  if (score >= 1.1) return "SR";
-  if (score >= 0.7) return "R";
-  return "N";
-}
-
 export function buildPlan(input: EngineInput): DrawPlan {
   const { actions, draws, month, week, now } = input;
-  const mood = effectiveMood(input.mood, draws, now);
+  const mood = inferMood(input.cards ?? [], draws);
   const nowMs = now.getTime();
   const weekDraws = thisWeek(draws, now);
   const boosts = goalBoosts(actions, draws, month, now);
@@ -148,46 +143,33 @@ export function buildPlan(input: EngineInput): DrawPlan {
     const priority = week?.priorities[a.id] ?? "normal";
     if (priority === "off") continue;
 
-    const reasons: string[] = [];
-    let base: number;
-    let score: number;
-
+    let w: number;
+    let urgent = false;
     if (a.kind === "defense") {
-      const { need, reason } = defenseNeed(a, draws, now);
+      const need = defenseNeed(a, draws, now);
       needs.push(need);
-      if (reason) reasons.push(reason);
-      base = 0.2 + need;
-      score = need;
+      urgent = need >= 1;
+      w = 0.2 + need;
     } else {
       const gw = a.goalId ? (month?.goalWeights[a.goalId] ?? 1) : 1;
       if (gw <= 0) continue;
-      const boost = a.goalId ? (boosts[a.goalId] ?? 1) : 1;
-      if (boost >= 1.4) reasons.push("今週まだ進んでいない目標");
-      base = gw * boost;
-      score = boost * (gw >= 2 ? 1.1 : 1);
+      w = gw * (a.goalId ? (boosts[a.goalId] ?? 1) : 1);
     }
 
-    let w = base;
-    if (priority === "high") {
-      w *= 3;
-      score *= 1.4;
-      reasons.push("今週の優先");
-    }
+    if (priority === "high") w *= 3;
     w *= energyFit(a, mood, week?.busy);
 
-    // 直近に引いたもの・拒否が続いたものは出にくく(ただし必要な防御は完全には消さない)
-    const recentlyDrawn = draws.some((d) => d.actionId === a.id && nowMs - d.at < 2 * HOUR);
-    if (recentlyDrawn) w *= 0.15;
+    // 前日のカードに載ったもの・やらずに上納が続いたものは出にくく(ただし急ぎの防御は残す)
+    const recentlyDrawn = draws.some((d) => d.actionId === a.id && nowMs - d.at < 20 * HOUR);
+    if (recentlyDrawn && !urgent) w *= 0.4;
     const skips = weekDraws.filter((d) => d.actionId === a.id && d.outcome === "skipped").length;
-    const skipFactor = Math.pow(0.7, skips);
-    w *= a.kind === "defense" && score >= 1 ? Math.max(0.4, skipFactor) : skipFactor;
+    w *= urgent ? Math.max(0.4, Math.pow(0.7, skips)) : Math.pow(0.7, skips);
     if (a.kind === "offense") {
       const last = lastDoneAt(a.id, draws);
       if (last !== undefined && nowMs - last < 12 * HOUR) w *= 0.6;
     }
 
-    const c: Candidate = { action: a, weight: w, rarity: rarityOf(score), reasons };
-    (a.kind === "defense" ? defense : offense).push(c);
+    (a.kind === "defense" ? defense : offense).push({ action: a, weight: w });
   }
 
   const pressure = pressureOf(needs);
@@ -210,6 +192,7 @@ export function buildPlan(input: EngineInput): DrawPlan {
 }
 
 function pickWeighted<T extends { weight: number }>(items: T[], rng: () => number): T | undefined {
+  if (items.length === 0) return undefined;
   const total = items.reduce((s, c) => s + c.weight, 0);
   if (total <= 0) return items[Math.floor(rng() * items.length)];
   let r = rng() * total;
@@ -220,8 +203,46 @@ function pickWeighted<T extends { weight: number }>(items: T[], rng: () => numbe
   return items[items.length - 1];
 }
 
-export function draw(input: EngineInput, rng: () => number = Math.random): Candidate | undefined {
+/** 今日のカードに載せる行動を重複なしで選ぶ */
+export function drawStickers(
+  input: EngineInput,
+  count = STICKERS_PER_CARD,
+  rng: () => number = Math.random,
+): Action[] {
   const plan = buildPlan(input);
-  const pool = rng() < plan.pDefense ? plan.defense : plan.offense;
-  return pickWeighted(pool.length ? pool : [...plan.defense, ...plan.offense], rng);
+  let defense = plan.defense;
+  let offense = plan.offense;
+  const picked: Action[] = [];
+  while (picked.length < count && defense.length + offense.length > 0) {
+    const preferred = rng() < plan.pDefense ? defense : offense;
+    const c = pickWeighted(preferred.length ? preferred : [...defense, ...offense], rng)!;
+    picked.push(c.action);
+    defense = defense.filter((x) => x !== c);
+    offense = offense.filter((x) => x !== c);
+  }
+  return picked;
+}
+
+/**
+ * 今日の禁止事項を選ぶ。最近破ったものほど出やすく、前日と同じものは出にくい。
+ */
+export function pickBan(
+  bans: Ban[],
+  cards: DailyCard[],
+  now: Date,
+  rng: () => number = Math.random,
+): Ban | undefined {
+  const active = bans.filter((b) => !b.archived);
+  const since = new Date(now);
+  since.setDate(since.getDate() - 14);
+  const sinceKey = ymd(since);
+  const recent = cards.filter((c) => c.date >= sinceKey);
+  const last = [...cards].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const weighted = active.map((b) => {
+    const broken = recent.filter((c) => c.banId === b.id && c.banBroken).length;
+    let weight = 1 + 1.5 * broken;
+    if (last?.banId === b.id) weight *= 0.3;
+    return { ban: b, weight };
+  });
+  return pickWeighted(weighted, rng)?.ban;
 }
