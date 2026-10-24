@@ -41,7 +41,7 @@ export function Onboarding() {
         {step === 1 && (
           <section>
             <h2>今年なりたい姿は？</h2>
-            <p className="muted">目標ごとに「攻撃行動」を自動でつくります。あとからでも追加できます。</p>
+            <p className="muted">目標ごとに、それに向けた行動を自動でつくります。あとからでも追加できます。</p>
             <div className="card form">
               <input placeholder="例: 絵を描けるようになる" value={title} onChange={(e) => setTitle(e.target.value)} />
               <input placeholder="なぜ?(任意)" value={why} onChange={(e) => setWhy(e.target.value)} />
@@ -63,7 +63,6 @@ export function Onboarding() {
           <section>
             <h2>ガチャに入れる行動</h2>
             <p className="muted">チェックを外したものは出ません。ここで細かく決めなくて大丈夫です。</p>
-            <h3><span className="badge defense">防御</span> 放置すると困ること</h3>
             <ul className="list">
               {DEFENSE_PRESETS.map((p, i) => (
                 <li key={p.title}>
@@ -73,9 +72,6 @@ export function Onboarding() {
                   </label>
                 </li>
               ))}
-            </ul>
-            <h3><span className="badge offense">攻撃</span> 未来のためにやること</h3>
-            <ul className="list">
               {OFFENSE_PRESETS.map((p, i) => (
                 <li key={p.title}>
                   <label className="check">

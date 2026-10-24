@@ -1,4 +1,7 @@
-/** 防御行動=放置による損失を防ぐ / 攻撃行動=将来の可能性を広げる */
+/**
+ * 防御行動=放置による損失を防ぐ / 攻撃行動=将来の可能性を広げる
+ * 抽選の内部でだけ使い、UIには出さない。
+ */
 export type ActionKind = "defense" | "offense";
 
 /** 体力コスト。1=寝転がってでもできる / 3=気合いが要る */
@@ -64,8 +67,6 @@ export interface Draw {
   outcome: Outcome;
   /** 脱線時: 実際にやったこと */
   detourNote?: string;
-  /** 脱線時: 実際にやったことの分類 */
-  detourKind?: ActionKind;
   resolvedAt?: number;
 }
 

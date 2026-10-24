@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { currentMonth, currentWeek, useStore } from "../store/useStore";
-import type { ActionKind, Mood } from "../domain/types";
+import type { Mood } from "../domain/types";
 import { buildPlan } from "../domain/engine";
 import { weekStartOf, parseYmd } from "../domain/dates";
 
@@ -17,7 +17,6 @@ export function GachaScreen() {
   const [showWhy, setShowWhy] = useState(false);
   const [detourOpen, setDetourOpen] = useState(false);
   const [note, setNote] = useState("");
-  const [detourKind, setDetourKind] = useState<ActionKind>("offense");
 
   const pending = [...draws].reverse().find((d) => d.outcome === "pending");
   const action = pending && actions.find((a) => a.id === pending.actionId);
@@ -41,14 +40,13 @@ export function GachaScreen() {
 
   const weekStart = parseYmd(weekStartOf(now)).getTime();
   const weekDone = draws.filter((d) => d.at >= weekStart && d.outcome === "done");
-  const kindOf = new Map(actions.map((a) => [a.id, a.kind]));
-  const defDone = weekDone.filter((d) => kindOf.get(d.actionId) === "defense").length;
+  const weekDetour = draws.filter((d) => d.at >= weekStart && d.outcome === "detour").length;
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const todayDone = draws.filter((d) => d.at >= todayStart && (d.outcome === "done" || d.outcome === "detour")).length;
 
   const submitDetour = () => {
     if (!pending) return;
-    detour(pending.id, note.trim(), detourKind);
+    detour(pending.id, note.trim());
     setNote("");
     setDetourOpen(false);
   };
@@ -57,8 +55,8 @@ export function GachaScreen() {
     <div className="gacha">
       <div className="stats">
         <div><b>{todayDone}</b><span>今日やった</span></div>
-        <div><b>{defDone}</b><span>今週の防御</span></div>
-        <div><b>{weekDone.length - defDone}</b><span>今週の攻撃</span></div>
+        <div><b>{weekDone.length}</b><span>今週やった</span></div>
+        <div><b>{weekDetour}</b><span>今週の脱線</span></div>
       </div>
 
       <div className="segmented">
@@ -73,7 +71,6 @@ export function GachaScreen() {
         <div className={`result rarity-${pending.rarity}`}>
           <div className="result-head">
             <span className="rarity">{pending.rarity}</span>
-            <span className={`badge ${action.kind}`}>{action.kind === "defense" ? "防御" : "攻撃"}</span>
           </div>
           <h2>{action.title}</h2>
           <div className="starter">
@@ -93,12 +90,8 @@ export function GachaScreen() {
             </div>
           ) : (
             <div className="card form">
-              <p className="muted">脱線もOK。何をしたか残しておくと週の補正に使えます。</p>
+              <p className="muted">脱線もOK。何をしたか残しておくと、あとで振り返れます。</p>
               <input placeholder="例: ギターを弾いた" value={note} onChange={(e) => setNote(e.target.value)} />
-              <div className="segmented">
-                <button className={detourKind === "defense" ? "active" : ""} onClick={() => setDetourKind("defense")}>防御っぽい</button>
-                <button className={detourKind === "offense" ? "active" : ""} onClick={() => setDetourKind("offense")}>攻撃っぽい</button>
-              </div>
               <button className="primary" onClick={submitDetour}>記録する</button>
             </div>
           )}

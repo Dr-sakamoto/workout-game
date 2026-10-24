@@ -1,13 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Action, ActionKind, Draw, Mood, MonthPlan, Priority, WeekPlan, YearGoal, Busy } from "../domain/types";
-import { actionsForGoal } from "../domain/presets";
+import type { Action, Draw, Mood, MonthPlan, Priority, WeekPlan, YearGoal, Busy } from "../domain/types";
+import { actionsForGoal, inferKind } from "../domain/presets";
 import { draw as runDraw } from "../domain/engine";
 import { weekStartOf, ym } from "../domain/dates";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 type NewAction = Omit<Action, "id" | "createdAt">;
+type ActionInput = Omit<NewAction, "kind">;
 
 interface State {
   onboarded: boolean;
@@ -23,8 +24,8 @@ interface State {
   addGoal: (title: string, why: string) => void;
   updateGoal: (id: string, patch: Partial<Omit<YearGoal, "id">>) => void;
   removeGoal: (id: string) => void;
-  addAction: (a: NewAction) => void;
-  updateAction: (id: string, patch: Partial<NewAction>) => void;
+  addAction: (a: ActionInput) => void;
+  updateAction: (id: string, patch: Partial<ActionInput>) => void;
   removeAction: (id: string) => void;
   setMonth: (patch: Partial<Omit<MonthPlan, "month">>) => void;
   setWeek: (patch: { busy?: Busy }) => void;
@@ -32,7 +33,7 @@ interface State {
   setMood: (m: Mood) => void;
   spin: () => Draw | undefined;
   resolve: (drawId: string, outcome: "done" | "skipped") => void;
-  detour: (drawId: string, note: string, kind: ActionKind) => void;
+  detour: (drawId: string, note: string) => void;
 }
 
 export function currentMonth(s: Pick<State, "months" | "goals">, now = new Date()): MonthPlan {
@@ -90,10 +91,17 @@ export const useStore = create<State>()(
           actions: s.actions.map((a) => (a.goalId === id ? { ...a, archived: true } : a)),
         })),
 
-      addAction: (a) => set((s) => ({ actions: [...s.actions, { ...a, id: uid(), createdAt: Date.now() }] })),
+      addAction: (a) =>
+        set((s) => ({ actions: [...s.actions, { ...a, kind: inferKind(a), id: uid(), createdAt: Date.now() }] })),
 
       updateAction: (id, patch) =>
-        set((s) => ({ actions: s.actions.map((a) => (a.id === id ? { ...a, ...patch } : a)) })),
+        set((s) => ({
+          actions: s.actions.map((a) => {
+            if (a.id !== id) return a;
+            const next = { ...a, ...patch };
+            return { ...next, kind: inferKind(next) };
+          }),
+        })),
 
       removeAction: (id) =>
         set((s) => ({ actions: s.actions.map((a) => (a.id === id ? { ...a, archived: true } : a)) })),
@@ -155,11 +163,11 @@ export const useStore = create<State>()(
           };
         }),
 
-      detour: (drawId, note, kind) =>
+      detour: (drawId, note) =>
         set((s) => ({
           draws: s.draws.map((d) =>
             d.id === drawId
-              ? { ...d, outcome: "detour", detourNote: note, detourKind: kind, resolvedAt: Date.now() }
+              ? { ...d, outcome: "detour", detourNote: note, resolvedAt: Date.now() }
               : d,
           ),
         })),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPlan, defenseNeed, draw, goalBoosts } from "./engine";
 import type { Action, Draw, MonthPlan } from "./types";
+import { inferKind } from "./presets";
 
 const now = new Date(2026, 9, 21, 12); // 水曜
 const base = (p: Partial<Action>): Action => ({
@@ -96,5 +97,14 @@ describe("goalBoosts", () => {
 describe("draw", () => {
   it("行動がなければ何も返さない", () => {
     expect(draw({ actions: [], draws: [], mood: "normal", now })).toBeUndefined();
+  });
+});
+
+describe("inferKind", () => {
+  it("目標があれば攻撃、期限・繰り返しがあれば防御、どちらもなければ攻撃", () => {
+    expect(inferKind({ goalId: "g", intervalDays: 3 })).toBe("offense");
+    expect(inferKind({ deadline: "2026-11-01" })).toBe("defense");
+    expect(inferKind({ intervalDays: 7 })).toBe("defense");
+    expect(inferKind({})).toBe("offense");
   });
 });

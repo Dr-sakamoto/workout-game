@@ -16,7 +16,7 @@ export function MonthScreen() {
 
   const addTask = () => {
     if (!title.trim() || !deadline) return;
-    s.addAction({ title: title.trim(), kind: "defense", starter: "必要なものを開いて、最初の1行だけやる", energy: 2, loss, deadline });
+    s.addAction({ title: title.trim(), starter: "必要なものを開いて、最初の1行だけやる", energy: 2, loss, deadline });
     setTitle("");
     setDeadline("");
   };
@@ -26,18 +26,6 @@ export function MonthScreen() {
       <h1>今月</h1>
       <p className="muted">{month.month}</p>
 
-      <h3>余力の使い道</h3>
-      <div className="card">
-        <p className="muted">防御の必要量を先に確保して、残りの余力をどう使うか。</p>
-        <input
-          type="range" min={0} max={1} step={0.05} value={month.offenseShare}
-          onChange={(e) => s.setMonth({ offenseShare: Number(e.target.value) })}
-        />
-        <div className="row muted">
-          <span>守り {Math.round((1 - month.offenseShare) * 100)}%</span>
-          <span>攻め {Math.round(month.offenseShare * 100)}%</span>
-        </div>
-      </div>
 
       {s.goals.length > 0 && (
         <>

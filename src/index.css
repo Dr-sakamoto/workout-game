@@ -6,8 +6,7 @@
   --muted: #a39cb8;
   --line: #3a3550;
   --accent: #f5c542;
-  --defense: #4fb6ff;
-  --offense: #ff5d73;
+  --pink: #ff5d73;
   --danger: #ff6b6b;
   --r: #7ad08f;
   --sr: #b48cff;
@@ -62,9 +61,6 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .check { display: flex; align-items: center; gap: 10px; padding: 8px 4px; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
-.badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
-.badge.defense { background: color-mix(in srgb, var(--defense) 20%, transparent); color: var(--defense); }
-.badge.offense { background: color-mix(in srgb, var(--offense) 20%, transparent); color: var(--offense); }
 
 .segmented { display: flex; gap: 6px; margin: 8px 0; }
 .segmented button { flex: 1; padding: 8px 4px; font-size: 13px; }
@@ -75,9 +71,6 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .chip.high { background: var(--accent); color: #1a1500; border-color: var(--accent); }
 .chip.off { opacity: 0.5; }
 
-.meter { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.bar { flex: 1; height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--defense); }
 
 .tabbar {
   display: flex; border-top: 1px solid var(--line); background: var(--surface);
@@ -102,7 +95,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   overflow: hidden; background: none; box-shadow: 0 10px 40px rgba(245, 197, 66, 0.25);
 }
 .capsule-top, .capsule-bottom { position: absolute; left: 0; right: 0; height: 50%; }
-.capsule-top { top: 0; background: var(--offense); }
+.capsule-top { top: 0; background: var(--pink); }
 .capsule-bottom { bottom: 0; background: var(--accent); border-top: 10px solid var(--bg); }
 .capsule-label {
   position: absolute; inset: 0; margin: auto; width: 96px; height: 96px; border-radius: 50%;

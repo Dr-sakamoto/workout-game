@@ -1,6 +1,6 @@
 import { currentMonth, currentWeek, useStore } from "../store/useStore";
 import type { Busy, Priority } from "../domain/types";
-import { buildPlan, goalBoosts } from "../domain/engine";
+import { goalBoosts } from "../domain/engine";
 import { parseYmd } from "../domain/dates";
 
 const BUSY: { id: Busy; label: string }[] = [
@@ -17,7 +17,6 @@ export function WeekScreen() {
   const week = currentWeek(s);
   const month = currentMonth(s);
   const now = new Date();
-  const plan = buildPlan({ actions: s.actions, draws: s.draws, month, week, mood: s.mood, now });
   const boosts = goalBoosts(s.actions, s.draws, month, now);
   const start = parseYmd(week.weekStart).getTime();
   const weekDraws = s.draws.filter((d) => d.at >= start);
@@ -39,13 +38,6 @@ export function WeekScreen() {
       </div>
 
       <div className="card">
-        <div className="meter">
-          <span>防御の必要量</span>
-          <div className="bar"><i style={{ width: `${plan.defensePressure * 100}%` }} /></div>
-        </div>
-        <p className="muted">
-          いま回すと 防御 {Math.round(plan.pDefense * 100)}% / 攻撃 {Math.round((1 - plan.pDefense) * 100)}% くらいで出ます。
-        </p>
         <p className="muted">
           今週: やった {count("done")} ・ パス {count("skipped")} ・ 脱線 {count("detour")}
         </p>
@@ -74,9 +66,7 @@ export function WeekScreen() {
           const p = week.priorities[a.id] ?? "normal";
           return (
             <li key={a.id} className="row">
-              <span>
-                <span className={`badge ${a.kind}`}>{a.kind === "defense" ? "防" : "攻"}</span> {a.title}
-              </span>
+              <span>{a.title}</span>
               <button className={`chip ${p}`} onClick={() => s.setPriority(a.id, NEXT[p])}>
                 {PRIORITY_LABEL[p]}
               </button>
@@ -92,7 +82,6 @@ export function WeekScreen() {
             {weekDraws.filter((d) => d.outcome === "detour").map((d) => (
               <li key={d.id} className="row">
                 <span>{d.detourNote || "(メモなし)"}</span>
-                <span className={`badge ${d.detourKind}`}>{d.detourKind === "defense" ? "防" : "攻"}</span>
               </li>
             ))}
           </ul>

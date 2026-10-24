@@ -50,3 +50,10 @@ export function actionsForGoal(goal: YearGoal): Preset[] {
     },
   ];
 }
+
+/** 分類はUIで選ばせず、中身から推定する: 目標あり=攻撃 / 期限・繰り返しあり=防御 */
+export function inferKind(a: Pick<Action, "goalId" | "deadline" | "intervalDays">): Action["kind"] {
+  if (a.goalId) return "offense";
+  if (a.deadline || a.intervalDays) return "defense";
+  return "offense";
+}
