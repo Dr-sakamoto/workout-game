@@ -3,19 +3,12 @@ import { useStore } from "../store/useStore";
 import type { DailyCard } from "../domain/types";
 import { parseYmd } from "../domain/dates";
 import { sound } from "../lib/sound";
+import { StickerFace } from "./StickerFace";
 
 type Confirm = { kind: "sticker"; id: string } | { kind: "ban"; step: 1 | 2 } | null;
 
 /** live=操作できる / reveal=出てきた直後の演出 / tribute=上納中 */
 export type CardMode = "live" | "reveal" | "tribute";
-
-const SPARKLES = [
-  { left: "12%", top: "14%", delay: "0s" },
-  { left: "78%", top: "22%", delay: ".6s" },
-  { left: "30%", top: "70%", delay: "1.1s" },
-  { left: "84%", top: "78%", delay: ".3s" },
-  { left: "55%", top: "8%", delay: "1.5s" },
-];
 
 function Stamp({ pressing }: { pressing: boolean }) {
   return (
@@ -95,11 +88,7 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
                 setConfirm(asking ? null : { kind: "sticker", id: draw.id });
               }}
             >
-              <div className="sticker-face">
-                {a.fun >= 3 && SPARKLES.map((s, j) => <i key={j} className="sparkle" style={{ ...s, animationDelay: s.delay }} />)}
-                <div className="sticker-title">{a.title}</div>
-                <div className="sticker-starter">{a.starter}</div>
-              </div>
+              <StickerFace title={a.title} starter={a.starter} fun={a.fun} />
               {asking && pressing !== draw.id && (
                 <div className="sticker-confirm" onClick={(e) => e.stopPropagation()}>
                   <button className="yes" onClick={() => press(draw.id, () => completeSticker(draw.id))}>はい</button>

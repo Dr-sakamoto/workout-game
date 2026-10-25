@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildPlan, defenseNeed, drawStickers, goalBoosts, inferMood, pickBan } from "./engine";
 import type { Action, Ban, DailyCard, Draw, MonthPlan } from "./types";
 import { inferKind } from "./presets";
+import { FREE, LIFE, MIN_SHARE, equalPercents, groupOf, moveBoundary, normalizeShares, sliceKeys } from "./shares";
 
 const now = new Date(2026, 9, 21, 12); // 水曜
 const DAY = 86400000;
@@ -94,9 +95,8 @@ describe("buildPlan", () => {
 describe("goalBoosts", () => {
   it("今週進んでいない目標を引きやすくする", () => {
     const actions = [base({ id: "g1a", goalId: "g1" }), base({ id: "g2a", goalId: "g2" })];
-    const month: MonthPlan = { month: "2026-10", offenseShare: 0.8, goalWeights: { g1: 1, g2: 1 }, note: "" };
     const draws = [0, 0.1, 0.2, 0.3].map((d) => draw("g1a", d));
-    const b = goalBoosts(actions, draws, month, now);
+    const b = goalBoosts(actions, draws, { g1: 50, g2: 50 }, now);
     expect(b.g2).toBeGreaterThan(1.5);
     expect(b.g1).toBeLessThan(1);
   });
@@ -153,5 +153,93 @@ describe("inferKind", () => {
     expect(inferKind({ deadline: "2026-11-01" })).toBe("defense");
     expect(inferKind({ intervalDays: 7 })).toBe("defense");
     expect(inferKind({})).toBe("offense");
+  });
+});
+
+describe("配分(円グラフ)", () => {
+  const month = (shares: Record<string, number>): MonthPlan => ({ month: "2026-10", shares, note: "" });
+  const total = (plan: ReturnType<typeof buildPlan>, key: "offense" | "defense", goal?: string) =>
+    plan[key].filter((c) => (goal ? c.action.goalId === goal : true)).reduce((s, c) => s + c.weight, 0);
+
+  it("groupOf: 目標があれば目標、なければ kind で くらし/そのほか", () => {
+    expect(groupOf({ goalId: "g1", kind: "offense" })).toBe("g1");
+    expect(groupOf({ kind: "defense" })).toBe(LIFE);
+    expect(groupOf({ kind: "offense" })).toBe(FREE);
+  });
+
+  it("sliceKeys: 目標 → くらし → そのほか の順で、行動のない枠は出さない", () => {
+    const actions = [
+      base({ id: "a", kind: "defense" }),
+      base({ id: "b", kind: "offense" }),
+      base({ id: "c", goalId: "g2" }),
+      base({ id: "d", goalId: "g1" }),
+      base({ id: "gone", goalId: "g3", archived: true }),
+    ];
+    expect(sliceKeys(actions, ["g1", "g2", "g3"])).toEqual(["g1", "g2", LIFE, FREE]);
+  });
+
+  it("normalizeShares: 何もなければ くらし20/そのほか10/目標は等分、合計は必ず100", () => {
+    const r = normalizeShares(undefined, ["g1", "g2", LIFE, FREE]);
+    expect(r).toEqual({ g1: 35, g2: 35, [LIFE]: 20, [FREE]: 10 });
+    for (const n of [1, 3, 7, 11]) {
+      const keys = Array.from({ length: n }, (_, i) => `g${i}`);
+      const v = Object.values(normalizeShares(undefined, keys));
+      expect(v.reduce((a, b) => a + b, 0)).toBe(100);
+    }
+  });
+
+  it("normalizeShares: 新しい枠は均等割りぶんを確保し、既存の枠は比例して縮む。消えた枠は捨てる", () => {
+    const r = normalizeShares({ g1: 60, [LIFE]: 40, removed: 99 }, ["g1", LIFE, "g2"]);
+    expect(r.removed).toBeUndefined();
+    expect(Object.values(r).reduce((a, b) => a + b, 0)).toBe(100);
+    expect(r.g2).toBe(33);
+    expect(r.g1).toBeGreaterThan(r[LIFE]);
+  });
+
+  it("normalizeShares: 最小割合を下回る枠は引き上げる", () => {
+    const r = normalizeShares({ g1: 99, g2: 1 }, ["g1", "g2"]);
+    expect(r.g2).toBeGreaterThanOrEqual(MIN_SHARE);
+    expect(r.g1 + r.g2).toBe(100);
+  });
+
+  it("moveBoundary: 両隣の枠だけが変わり、合計は100のまま、最小割合を守る", () => {
+    expect(moveBoundary([40, 30, 30], 1, 55)).toEqual([55, 15, 30]);
+    expect(moveBoundary([40, 30, 30], 2, 50)).toEqual([40, 10, 50]);
+    expect(moveBoundary([40, 30, 30], 1, 99)).toEqual([66, MIN_SHARE, 30]);
+    expect(moveBoundary([40, 30, 30], 1, -20)).toEqual([MIN_SHARE, 66, 30]);
+    expect(moveBoundary([100], 1, 50)).toEqual([100]);
+  });
+
+  it("equalPercents: 合計100", () => {
+    expect(equalPercents(3)).toEqual([34, 33, 33]);
+    expect(equalPercents(4)).toEqual([25, 25, 25, 25]);
+  });
+
+  it("目標の割合が大きいほど、その目標の行動が出やすい", () => {
+    const actions = [base({ id: "a1", goalId: "g1" }), base({ id: "a2", goalId: "g2" })];
+    const plan = buildPlan({ actions, draws: [], month: month({ g1: 80, g2: 20 }), now });
+    expect(total(plan, "offense", "g1")).toBeGreaterThan(total(plan, "offense", "g2") * 3);
+  });
+
+  it("枠の割合は行動の数に左右されない(行動が多い目標が有利にならない)", () => {
+    const actions = [
+      base({ id: "a1", goalId: "g1" }), base({ id: "a2", goalId: "g1" }), base({ id: "a3", goalId: "g1" }),
+      base({ id: "b1", goalId: "g2" }),
+    ];
+    const plan = buildPlan({ actions, draws: [], month: month({ g1: 50, g2: 50 }), now });
+    expect(total(plan, "offense", "g1")).toBeCloseTo(total(plan, "offense", "g2"), 5);
+  });
+
+  it("くらしの割合が大きいほど、防御を引く確率が上がる", () => {
+    const actions = [base({ id: "chore", kind: "defense", intervalDays: 30 }), base({ id: "art" })];
+    const low = buildPlan({ actions, draws: [], month: month({ [LIFE]: 10, [FREE]: 90 }), now });
+    const high = buildPlan({ actions, draws: [], month: month({ [LIFE]: 70, [FREE]: 30 }), now });
+    expect(high.pDefense).toBeGreaterThan(low.pDefense);
+  });
+
+  it("期限が迫っていると、くらしの割合が小さくても防御が先に確保される", () => {
+    const actions = [base({ id: "pay", kind: "defense", loss: 3, deadline: "2026-10-21" }), base({ id: "art" })];
+    const plan = buildPlan({ actions, draws: [], month: month({ [LIFE]: 4, [FREE]: 96 }), now });
+    expect(plan.pDefense).toBeGreaterThan(0.4);
   });
 });

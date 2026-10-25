@@ -50,10 +50,11 @@ export interface YearGoal {
 export interface MonthPlan {
   /** YYYY-MM */
   month: string;
-  /** 余力のうち攻撃行動へ回す配分の目安(0〜1)。防御の必要量が優先される */
-  offenseShare: number;
-  /** goalId -> 重み(0〜3) */
-  goalWeights: Record<string, number>;
+  /**
+   * ガチャ配分(%、合計100)。キーは目標のid / "life"(くらし) / "free"(そのほか)。
+   * 保存されていない枠は normalizeShares が補う。期限が迫った用事があると life は自動で増える
+   */
+  shares: Record<string, number>;
   /** 今月のテーマ・メモ */
   note: string;
 }

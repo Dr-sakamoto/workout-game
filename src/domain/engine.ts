@@ -1,5 +1,6 @@
 import type { Action, Ban, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
 import { HOUR, daysBetween, daysUntil, weekStartOf, parseYmd, ymd } from "./dates";
+import { FREE, LIFE, groupOf, normalizeShares, sliceKeys } from "./shares";
 
 export interface EngineInput {
   actions: Action[];
@@ -95,16 +96,16 @@ function thisWeek(draws: Draw[], now: Date): Draw[] {
 
 /**
  * 週単位の偏り補正: 今週完了した攻撃行動のうち、各目標が占める割合を
- * 月の配分(goalWeights)と比べ、足りない目標を引きやすくする。
+ * 月の配分(shares)と比べ、足りない目標を引きやすくする。
  */
 export function goalBoosts(
   actions: Action[],
   draws: Draw[],
-  month: MonthPlan | undefined,
+  shares: Record<string, number> | undefined,
   now: Date,
 ): Record<string, number> {
-  const weights = month?.goalWeights ?? {};
-  const goalIds = Object.keys(weights).filter((g) => weights[g] > 0);
+  const weights = shares ?? {};
+  const goalIds = Object.keys(weights).filter((g) => g !== LIFE && g !== FREE && weights[g] > 0);
   const totalW = goalIds.reduce((s, g) => s + weights[g], 0);
   const byId = new Map(actions.map((a) => [a.id, a]));
   const counts: Record<string, number> = {};
@@ -132,7 +133,15 @@ export function buildPlan(input: EngineInput): DrawPlan {
   const mood = inferMood(input.cards ?? [], draws);
   const nowMs = now.getTime();
   const weekDraws = thisWeek(draws, now);
-  const boosts = goalBoosts(actions, draws, month, now);
+  const shares = normalizeShares(month?.shares, sliceKeys(actions));
+  const boosts = goalBoosts(actions, draws, shares, now);
+
+  // 枠(目標・そのほか)ごとの行動数。枠の割合を行動数で割って、1つあたりの重みにする
+  const groupCount: Record<string, number> = {};
+  for (const a of actions) {
+    if (a.archived || (week?.priorities[a.id] ?? "normal") === "off") continue;
+    groupCount[groupOf(a)] = (groupCount[groupOf(a)] ?? 0) + 1;
+  }
 
   const defense: Candidate[] = [];
   const offense: Candidate[] = [];
@@ -151,9 +160,10 @@ export function buildPlan(input: EngineInput): DrawPlan {
       urgent = need >= 1;
       w = 0.2 + need;
     } else {
-      const gw = a.goalId ? (month?.goalWeights[a.goalId] ?? 1) : 1;
-      if (gw <= 0) continue;
-      w = gw * (a.goalId ? (boosts[a.goalId] ?? 1) : 1);
+      const g = groupOf(a);
+      const share = shares[g] ?? 0;
+      if (share <= 0) continue;
+      w = (share / 100 / groupCount[g]) * (a.goalId ? (boosts[a.goalId] ?? 1) : 1);
     }
 
     if (priority === "high") w *= 3;
@@ -173,9 +183,9 @@ export function buildPlan(input: EngineInput): DrawPlan {
   }
 
   const pressure = pressureOf(needs);
-  const share = month?.offenseShare ?? 0.8;
-  // 防御は必要量を先に確保し、残りの余力を攻撃に配分する
-  let pDefense = pressure + (1 - pressure) * (1 - share);
+  // くらしの枠(%)が基本の割合。期限などで必要量が高いときは、その分が先に確保される
+  const life = (shares[LIFE] ?? 0) / 100;
+  let pDefense = pressure + (1 - pressure) * life;
 
   // 今週の防御/攻撃の偏りを補正
   const resolved = weekDraws.filter((d) => d.outcome === "done");

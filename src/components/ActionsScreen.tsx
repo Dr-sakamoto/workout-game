@@ -1,101 +1,145 @@
-import { useState } from "react";
-import { useStore } from "../store/useStore";
-import type { Action, Energy, Fun, Loss } from "../domain/types";
+import { useRef, useState } from "react";
+import { currentWeek, useStore } from "../store/useStore";
+import type { Action, Priority } from "../domain/types";
+import { FREE, LIFE, groupOf, sliceKeys } from "../domain/shares";
+import { draftToFields, intervalLabel, newDraft, type ActionDraft } from "../domain/actionDraft";
+import { daysUntil } from "../domain/dates";
+import { ActionEditor } from "./ActionEditor";
+import { labelFor, styleFor } from "./sliceStyle";
 
-function Editor({ a }: { a: Action }) {
+const PRIORITY: Record<Priority, { label: string; next: Priority }> = {
+  normal: { label: "ふつう", next: "high" },
+  high: { label: "優先", next: "off" },
+  off: { label: "休み", next: "normal" },
+};
+
+/** 行の補足: 期限 or くり返し */
+function timing(a: Action): { text: string; warn: boolean } | undefined {
+  if (a.deadline) {
+    const d = daysUntil(a.deadline, new Date());
+    return { text: d < 0 ? `${-d}日超過` : d === 0 ? "今日まで" : `あと${d}日`, warn: d <= 0 };
+  }
+  if (a.intervalDays) return { text: intervalLabel(a.intervalDays), warn: false };
+  return undefined;
+}
+
+function Row({ a, onOpen }: { a: Action; onOpen: () => void }) {
   const s = useStore();
-  const up = (patch: Partial<Omit<Action, "kind">>) => s.updateAction(a.id, patch);
+  const p = currentWeek(s).priorities[a.id] ?? "normal";
+  const t = timing(a);
   return (
-    <div className="card form">
-      <input value={a.title} onChange={(e) => up({ title: e.target.value })} />
-      <label className="muted">最初の一歩(2〜5分)</label>
-      <input value={a.starter} onChange={(e) => up({ starter: e.target.value })} />
-      <div className="row">
-        <span className="muted">楽しさ(キラ度)</span>
-        <span className="stepper">
-          {([1, 2, 3, 4] as Fun[]).map((n) => (
-            <button key={n} className={a.fun === n ? "active" : ""} onClick={() => up({ fun: n })}>{"★".repeat(n)}</button>
+    <li className={`action-row ${p === "off" ? "paused" : ""}`}>
+      <button className="action-main" onClick={onOpen} aria-label={`${a.title}を編集`}>
+        <span className="action-title">{a.title}</span>
+        {t && <span className={t.warn ? "danger" : "muted"}>{t.text}</span>}
+        <span className="muted">›</span>
+      </button>
+      <div className="action-ctl">
+        <span className="stars" role="group" aria-label="楽しさ">
+          {[1, 2, 3, 4].map((n) => (
+            <button key={n} className={n <= a.fun ? "on" : ""} aria-label={`楽しさ${n}`} onClick={() => s.updateAction(a.id, { fun: n as 1 | 2 | 3 | 4 })}>
+              ★
+            </button>
           ))}
         </span>
+        <button className={`chip ${p}`} onClick={() => s.setPriority(a.id, PRIORITY[p].next)}>
+          今週 {PRIORITY[p].label}
+        </button>
       </div>
-      <div className="row">
-        <span className="muted">しんどさ</span>
-        <span className="stepper">
-          {([1, 2, 3] as Energy[]).map((n) => (
-            <button key={n} className={a.energy === n ? "active" : ""} onClick={() => up({ energy: n })}>{"●".repeat(n)}</button>
-          ))}
-        </span>
-      </div>
-      <div className="row">
-        <span className="muted">目標</span>
-        <select value={a.goalId ?? ""} onChange={(e) => up({ goalId: e.target.value || undefined })}>
-          <option value="">なし</option>
-          {s.goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-        </select>
-      </div>
-      {!a.goalId && (
-        <>
-          <div className="row">
-            <span className="muted">放置すると</span>
-            <span className="stepper">
-              {([1, 2, 3] as Loss[]).map((n) => (
-                <button key={n} className={a.loss === n ? "active" : ""} onClick={() => up({ loss: n })}>
-                  {["", "平気", "困る", "痛い"][n]}
-                </button>
-              ))}
-            </span>
-          </div>
-          <div className="row">
-            <span className="muted">繰り返し(日ごと)</span>
-            <input type="number" min={1} className="small" value={a.intervalDays ?? ""}
-              onChange={(e) => up({ intervalDays: e.target.value ? Number(e.target.value) : undefined })} />
-          </div>
-          <div className="row">
-            <span className="muted">期限</span>
-            <input type="date" className="small" value={a.deadline ?? ""} onChange={(e) => up({ deadline: e.target.value || undefined })} />
-          </div>
-        </>
-      )}
-      <button className="ghost danger" onClick={() => s.removeAction(a.id)}>ガチャから外す</button>
-    </div>
+    </li>
   );
 }
 
+/**
+ * 行動の一覧。名前を打って、入れる枠を選んで追加できる(細かい設定は「くわしく」から)。
+ * 一覧では★と今週の出やすさをその場で変えられ、行をタップすると編集画面が開く。
+ */
 export function ActionsScreen() {
   const s = useStore();
-  const [open, setOpen] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [group, setGroup] = useState<string>(FREE);
+  const [flash, setFlash] = useState("");
+  const [editor, setEditor] = useState<{ action?: Action; initial?: Partial<ActionDraft> } | null>(null);
+  const flashTimer = useRef<number>();
   const active = s.actions.filter((a) => !a.archived);
+  const keys = sliceKeys(s.actions, s.goals.map((g) => g.id));
+  // 追加で選べる枠: 目標 + くらし + そのほか(まだ行動のない枠も選べる)
+  const choices = [...s.goals.map((g) => g.id), LIFE, FREE];
 
-  const add = () => {
-    if (!title.trim()) return;
-    s.addAction({
-      title: title.trim(), energy: 2, loss: 1, fun: 2,
-      starter: "タイマーを3分セットして、とりあえず始める",
-    });
+  const quickAdd = () => {
+    const name = title.trim();
+    if (!name) return;
+    s.addAction(draftToFields(newDraft(group, name)));
     setTitle("");
+    setFlash(`「${name}」を追加しました`);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(""), 2500);
   };
 
   return (
     <div>
       <h1>行動</h1>
-      <p className="muted">基本はいじらなくてOK。楽しいものほど★を増やすと、ステッカーがキラキラになります。</p>
-      <ul className="list">
-        {active.map((a) => (
-          <li key={a.id}>
-            <button className="row item" onClick={() => setOpen(open === a.id ? null : a.id)}>
-              <span>{a.title}</span>
-              <span className="muted">{open === a.id ? "▲" : "▼"}</span>
+
+      <form
+        className="quick-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          quickAdd();
+        }}
+      >
+        <div className="add-row">
+          <input placeholder="やりたいこと・やるべきことを追加" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <button type="submit" disabled={!title.trim()}>追加</button>
+        </div>
+        {title.trim() && (
+          <div className="quick-pick">
+            <span className="muted">どれに入れる?</span>
+            <div className="chips">
+              {choices.map((k) => (
+                <button type="button" key={k} className={`pick ${group === k ? "on" : ""}`} onClick={() => setGroup(k)}>
+                  <i className="dot" style={{ background: styleFor(k, s.goals).fill }} />
+                  <span>{labelFor(k, s.goals)}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className="link" onClick={() => setEditor({ initial: { title: title.trim(), group } })}>
+              くわしく設定する →
             </button>
-            {open === a.id && <Editor a={a} />}
-          </li>
-        ))}
-      </ul>
-      <h3>追加</h3>
-      <div className="card form">
-        <input placeholder="行動の名前" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <button onClick={add} disabled={!title.trim()}>追加</button>
-      </div>
+          </div>
+        )}
+        {flash && <p className="flash-msg">{flash}</p>}
+      </form>
+
+      <p className="muted legend-help">★ = 楽しさ(多いほどキラキラのステッカー)　右のボタン = 今週の出やすさ(タップで切り替え)　行をタップ = くわしく編集</p>
+
+      {keys.map((k) => {
+        const rows = active
+          .filter((a) => groupOf(a) === k)
+          .sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.createdAt - b.createdAt);
+        return (
+          <section key={k}>
+            <h3 className="group-head">
+              <i className="dot" style={{ background: styleFor(k, s.goals).fill }} />
+              {labelFor(k, s.goals)}
+            </h3>
+            <ul className="list">
+              {rows.map((a) => (
+                <Row key={a.id} a={a} onOpen={() => setEditor({ action: a })} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+
+      {editor && (
+        <ActionEditor
+          key={editor.action?.id ?? "new"}
+          action={editor.action}
+          initial={editor.initial}
+          onSaved={() => !editor.action && setTitle("")}
+          onClose={() => setEditor(null)}
+        />
+      )}
     </div>
   );
 }
