@@ -43,14 +43,10 @@ interface State {
 
 export function currentMonth(s: Pick<State, "months" | "goals">, now = new Date()): MonthPlan {
   const key = ym(now);
-  return (
-    s.months[key] ?? {
-      month: key,
-      offenseShare: 0.8,
-      goalWeights: Object.fromEntries(s.goals.map((g) => [g.id, 1])),
-      note: "",
-    }
-  );
+  if (s.months[key]) return s.months[key];
+  // 新しい月は前の月の配分をそのまま引き継ぐ(毎月つくり直さなくていい)
+  const prev = Object.keys(s.months).filter((k) => k < key).sort().pop();
+  return { month: key, shares: prev ? s.months[prev].shares : {}, note: "" };
 }
 
 export function currentWeek(s: Pick<State, "weeks">, now = new Date()): WeekPlan {
@@ -94,12 +90,8 @@ export const useStore = create<State>()(
         set((s) => {
           const goal: YearGoal = { id: uid(), title, why };
           const generated = actionsForGoal(goal).map((p) => ({ ...p, id: uid(), createdAt: Date.now() }));
-          const m = currentMonth(s);
-          return {
-            goals: [...s.goals, goal],
-            actions: [...s.actions, ...generated],
-            months: { ...s.months, [m.month]: { ...m, goalWeights: { ...m.goalWeights, [goal.id]: 1 } } },
-          };
+          // 配分は触らない。新しい目標の枠は normalizeShares が均等割りぶんを確保する
+          return { goals: [...s.goals, goal], actions: [...s.actions, ...generated] };
         }),
 
       updateGoal: (id, patch) => set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) })),
@@ -215,8 +207,8 @@ export const useStore = create<State>()(
     }),
     {
       name: "action-gacha",
-      version: 2,
-      // v1: 随時ガチャ → v2: 1日1枚のカード制
+      version: 3,
+      // v1: 随時ガチャ → v2: 1日1枚のカード制 → v3: 配分を円グラフ(%)に
       migrate: (persisted, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const s = persisted as any;
@@ -231,6 +223,21 @@ export const useStore = create<State>()(
           s.cards = [];
           delete s.mood;
           delete s.year;
+        }
+        if (version < 3) {
+          // goalWeights/offenseShare → shares(%)
+          const months: Record<string, MonthPlan> = {};
+          for (const [k, m] of Object.entries<any>(s.months ?? {})) {
+            const gw: Record<string, number> = m.goalWeights ?? {};
+            const total = Object.values(gw).reduce((a, b) => a + b, 0);
+            const offense = m.offenseShare ?? 0.8;
+            // くらし = 守りの割合。攻めの割合のうち 10% を「そのほか」に、残りを目標の重みで分ける
+            const shares: Record<string, number> = { life: Math.round((1 - offense) * 100), free: total > 0 ? 10 : Math.round(offense * 100) };
+            const goalsTotal = Math.max(0, offense * 100 - 10);
+            if (total > 0) for (const [g, w] of Object.entries(gw)) shares[g] = Math.round((goalsTotal * w) / total);
+            months[k] = { month: k, shares, note: m.note ?? "" };
+          }
+          s.months = months;
         }
         return s;
       },

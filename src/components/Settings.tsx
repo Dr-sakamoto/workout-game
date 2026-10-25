@@ -1,17 +1,13 @@
 import { useState } from "react";
-import { WeekScreen } from "./WeekScreen";
-import { MonthScreen } from "./MonthScreen";
-import { YearScreen } from "./YearScreen";
+import { AllocationScreen } from "./AllocationScreen";
 import { ActionsScreen } from "./ActionsScreen";
 import { BansScreen } from "./BansScreen";
 import { HistoryScreen } from "./HistoryScreen";
 
 const TABS = [
+  { id: "allocation", label: "配分" },
   { id: "actions", label: "行動" },
   { id: "bans", label: "禁止" },
-  { id: "week", label: "週" },
-  { id: "month", label: "月" },
-  { id: "year", label: "年" },
   { id: "history", label: "これまで" },
 ] as const;
 
@@ -19,7 +15,7 @@ type Tab = (typeof TABS)[number]["id"];
 
 /** ガチャ本体をタップすると開く設定 */
 export function Settings({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("actions");
+  const [tab, setTab] = useState<Tab>("allocation");
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -35,11 +31,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
           ))}
         </nav>
         <div className="sheet-body">
+          {tab === "allocation" && <AllocationScreen />}
           {tab === "actions" && <ActionsScreen />}
           {tab === "bans" && <BansScreen />}
-          {tab === "week" && <WeekScreen />}
-          {tab === "month" && <MonthScreen />}
-          {tab === "year" && <YearScreen />}
           {tab === "history" && <HistoryScreen />}
         </div>
       </div>
