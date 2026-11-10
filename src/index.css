@@ -201,16 +201,42 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   from { transform: translate(-50%, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
   to { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.88; }
 }
-/* 過酷な行動の完了は金のハンコ(数字は出さない) */
+/* 過酷な行動の完了は燃える赤黒のハンコ(数字は出さない) */
 .imprint.hard {
-  color: #b9851c; border-color: #b9851c; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #b9851c, 0 0 10px rgba(240, 190, 60, 0.7);
-  background: radial-gradient(circle at 35% 30%, rgba(255, 240, 180, 0.6), rgba(255, 255, 255, 0.15));
-  mix-blend-mode: normal; animation: imprint-hard 0.45s ease-out both;
+  color: #ff4a1c; border-color: #ff3b1a;
+  background: radial-gradient(circle at 50% 60%, #5a0a0a, #2a0505 70%);
+  box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff3b1a, 0 0 10px 2px rgba(255, 60, 20, 0.75), 0 0 22px 6px rgba(140, 10, 0, 0.55);
+  text-shadow: 0 0 4px #ff9a3c, 0 0 8px #ff2a00;
+  mix-blend-mode: normal; opacity: 1;
+  animation: imprint-hard 0.5s ease-out both, hellfire 1.4s 0.5s ease-in-out infinite alternate;
+}
+.imprint.hard::after {
+  content: ""; position: absolute; left: 50%; bottom: 78%; width: 100%; height: 85%; z-index: -1;
+  transform: translateX(-50%); transform-origin: 50% 100%; pointer-events: none;
+  background:
+    radial-gradient(ellipse 10% 30% at 50% 62%, #ffe08a 0 35%, transparent 100%),
+    radial-gradient(ellipse 17% 42% at 28% 72%, #ff8a1e 0 45%, transparent 100%),
+    radial-gradient(ellipse 20% 55% at 52% 66%, #ff3c0a 0 45%, transparent 100%),
+    radial-gradient(ellipse 16% 38% at 76% 74%, #b80c00 0 45%, transparent 100%);
+  filter: blur(0.6px);
+  animation: flame 0.6s ease-in-out infinite alternate;
 }
 @keyframes imprint-hard {
   0% { transform: translate(-50%, -50%) rotate(-14deg) scale(2.2); opacity: 0; }
-  60% { transform: translate(-50%, -50%) rotate(-14deg) scale(0.92); opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.95; }
+  55% { transform: translate(-50%, -50%) rotate(-10deg) scale(0.9); opacity: 1; }
+  75% { transform: translate(-50%, -50%) rotate(-17deg) scale(1.04); }
+  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+}
+@keyframes hellfire {
+  from { box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff3b1a, 0 0 8px 1px rgba(255, 40, 10, 0.6), 0 0 18px 4px rgba(120, 0, 0, 0.5); }
+  to { box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff7a2a, 0 0 14px 4px rgba(255, 110, 30, 0.85), 0 0 28px 8px rgba(160, 20, 0, 0.6); }
+}
+@keyframes flame {
+  from { transform: translateX(-50%) scaleY(0.85) skewX(-4deg); opacity: 0.8; }
+  to { transform: translateX(-50%) scaleY(1.15) skewX(5deg); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .imprint.hard, .imprint.hard::after { animation: none; }
 }
 .sticker.done .sticker-face { filter: saturate(0.7) brightness(0.97); }
 
