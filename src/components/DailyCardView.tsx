@@ -32,9 +32,7 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
     .map((id) => draws.find((d) => d.id === id))
     .filter((d) => d !== undefined)
     .map((d) => ({ draw: d, action: actions.find((a) => a.id === d.actionId) }))
-    .filter((x) => x.action !== undefined)
-    // 残留枠は左端、あとは楽しいものほど左に
-    .sort((a, b) => Number(b.draw.id === card.stayId) - Number(a.draw.id === card.stayId) || b.action!.fun - a.action!.fun);
+    .filter((x) => x.action !== undefined); // 出た順(残留枠は最初に入るので左端)
   const stayN = card.stayId ? stayDay(card, cards, draws) : 0;
 
   const press = (key: string, commit: () => void, heavy = false) => {
