@@ -217,9 +217,12 @@ export function drawStickers(
   input: EngineInput,
   count = STICKERS_PER_CARD,
   rng: () => number = Math.random,
+  exclude: string[] = [],
 ): Action[] {
   const plan = buildPlan(input);
-  const { defense, offense } = plan;
+  const keep = (c: Candidate) => !exclude.includes(c.action.id);
+  const defense = plan.defense.filter(keep);
+  const offense = plan.offense.filter(keep);
   const picked: Action[] = [];
   if (defense.length + offense.length === 0) return picked;
   while (picked.length < count) {
@@ -228,6 +231,70 @@ export function drawStickers(
     picked.push(c.action);
   }
   return picked;
+}
+
+/** 残留枠に同じ行動を置いておく最大日数 */
+export const STAY_MAX_DAYS = 3;
+/** 残留枠の対象になる、やらずに上納された回数(直近14日) */
+const STAY_MIN_SKIPS = 2;
+
+const stayDraw = (c: DailyCard, draws: Draw[]) => (c.stayId ? draws.find((d) => d.id === c.stayId) : undefined);
+
+/** このカードの残留が何日目か。前のカードで同じ行動をやらずに上納していた分だけ続く */
+export function stayDay(card: DailyCard, cards: DailyCard[], draws: Draw[]): number {
+  const cur = stayDraw(card, draws);
+  if (!cur) return 0;
+  const before = cards.filter((c) => c.date < card.date).sort((a, b) => b.date.localeCompare(a.date));
+  let day = 1;
+  for (const c of before) {
+    const d = stayDraw(c, draws);
+    if (!d || d.actionId !== cur.actionId || d.outcome !== "skipped") break;
+    day++;
+  }
+  return day;
+}
+
+/**
+ * 残留枠(やりたくないゾーン)の行動を選ぶ。
+ * 前のカードの残留をやらずに上納していて3日未満なら続ける。
+ * それ以外は、直近14日でやらずに上納された回数が一番多い行動(2回以上)を選ぶ。
+ */
+export function pickStay(
+  actions: Action[],
+  cards: DailyCard[],
+  draws: Draw[],
+  now: Date,
+  week?: WeekPlan,
+): { action: Action; day: number } | undefined {
+  const today = ymd(now);
+  const usable = (a: Action | undefined): a is Action =>
+    !!a && !a.archived && (week?.priorities[a.id] ?? "normal") !== "off";
+  const prev = cards.filter((c) => c.date < today).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const prevStay = prev && stayDraw(prev, draws);
+  let evicted: string | undefined;
+  if (prev && prevStay) {
+    const a = actions.find((x) => x.id === prevStay.actionId);
+    const day = stayDay(prev, cards, draws);
+    if (prevStay.outcome === "skipped" && day < STAY_MAX_DAYS && usable(a)) return { action: a, day: day + 1 };
+    evicted = prevStay.actionId;
+  }
+
+  const since = new Date(now);
+  since.setDate(since.getDate() - 14);
+  const sinceKey = ymd(since);
+  const counts = new Map<string, number>();
+  for (const d of draws) {
+    if (d.outcome !== "skipped" || d.cardDate < sinceKey || d.cardDate >= today) continue;
+    counts.set(d.actionId, (counts.get(d.actionId) ?? 0) + 1);
+  }
+  let best: { action: Action; n: number } | undefined;
+  for (const [id, n] of counts) {
+    if (id === evicted || n < STAY_MIN_SKIPS) continue;
+    const a = actions.find((x) => x.id === id);
+    if (!usable(a)) continue;
+    if (!best || n > best.n) best = { action: a, n };
+  }
+  return best && { action: best.action, day: 1 };
 }
 
 /**

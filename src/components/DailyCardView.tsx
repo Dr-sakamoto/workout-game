@@ -4,6 +4,7 @@ import type { DailyCard } from "../domain/types";
 import { parseYmd } from "../domain/dates";
 import { sound } from "../lib/sound";
 import { StickerFace } from "./StickerFace";
+import { stayDay } from "../domain/engine";
 
 type Confirm = { kind: "sticker"; id: string } | { kind: "ban"; step: 1 | 2 } | null;
 
@@ -21,7 +22,7 @@ function Stamp({ pressing }: { pressing: boolean }) {
 }
 
 export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode }) {
-  const { draws, actions, bans, completeSticker, breakBan } = useStore();
+  const { draws, actions, bans, cards, completeSticker, breakBan } = useStore();
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [pressing, setPressing] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
@@ -32,8 +33,9 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
     .filter((d) => d !== undefined)
     .map((d) => ({ draw: d, action: actions.find((a) => a.id === d.actionId) }))
     .filter((x) => x.action !== undefined)
-    // 楽しいものほど左に
-    .sort((a, b) => b.action!.fun - a.action!.fun);
+    // 残留枠は左端、あとは楽しいものほど左に
+    .sort((a, b) => Number(b.draw.id === card.stayId) - Number(a.draw.id === card.stayId) || b.action!.fun - a.action!.fun);
+  const stayN = card.stayId ? stayDay(card, cards, draws) : 0;
   const ban = bans.find((b) => b.id === card.banId);
 
   const press = (key: string, commit: () => void) => {
@@ -78,10 +80,11 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
           const a = action!;
           const done = draw.outcome === "done";
           const asking = confirm?.kind === "sticker" && confirm.id === draw.id;
+          const stay = draw.id === card.stayId;
           return (
             <div
               key={draw.id}
-              className={`sticker kira-${a.fun} ${done ? "done" : ""} ${asking ? "asking" : ""}`}
+              className={`sticker kira-${a.fun} ${done ? "done" : ""} ${asking ? "asking" : ""} ${stay ? "stay" : ""}`}
               style={{ animationDelay: `${0.25 + i * 0.12}s` }}
               onClick={() => {
                 if (!live || done || pressing) return;
@@ -89,6 +92,7 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
               }}
             >
               <StickerFace title={a.title} starter={a.starter} fun={a.fun} />
+              {stay && <div className="stay-tag">残留 {stayN}日目</div>}
               {asking && pressing !== draw.id && (
                 <div className="sticker-confirm" onClick={(e) => e.stopPropagation()}>
                   <button className="yes" onClick={() => press(draw.id, () => completeSticker(draw.id))}>はい</button>

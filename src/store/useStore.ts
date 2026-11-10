@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Action, Ban, Busy, DailyCard, Draw, MonthPlan, Priority, WeekPlan, YearGoal } from "../domain/types";
 import { BAN_PRESETS, actionsForGoal, inferKind } from "../domain/presets";
-import { drawStickers, pickBan } from "../domain/engine";
+import { STICKERS_PER_CARD, drawStickers, pickBan, pickStay } from "../domain/engine";
 import { weekStartOf, ym, ymd } from "../domain/dates";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -146,14 +146,16 @@ export const useStore = create<State>()(
         const s = get();
         if (todayCard(s, now)) return undefined;
         const date = ymd(now);
-        const picked = drawStickers({
-          actions: s.actions,
-          draws: s.draws,
-          cards: s.cards,
-          month: currentMonth(s, now),
-          week: currentWeek(s, now),
-          now,
-        });
+        const week = currentWeek(s, now);
+        // 残留枠: 避けがちな行動を1枠に置き、残りの枠には出さない
+        const stay = pickStay(s.actions, s.cards, s.draws, now, week);
+        const rest = drawStickers(
+          { actions: s.actions, draws: s.draws, cards: s.cards, month: currentMonth(s, now), week, now },
+          stay ? STICKERS_PER_CARD - 1 : STICKERS_PER_CARD,
+          Math.random,
+          stay ? [stay.action.id] : [],
+        );
+        const picked = stay ? [stay.action, ...rest] : rest;
         const draws: Draw[] = picked.map((a) => ({
           id: uid(),
           at: now.getTime(),
@@ -165,6 +167,7 @@ export const useStore = create<State>()(
         const card: DailyCard = {
           date,
           drawIds: draws.map((d) => d.id),
+          stayId: stay ? draws[0].id : undefined,
           banId: ban?.id,
           banBroken: false,
           tributed: false,

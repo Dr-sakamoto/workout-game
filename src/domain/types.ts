@@ -88,6 +88,8 @@ export interface Draw {
 export interface DailyCard {
   date: string;
   drawIds: string[];
+  /** 残留枠(避けがちな行動を置き続ける枠)のステッカーの drawId */
+  stayId?: string;
   banId?: string;
   banBroken: boolean;
   tributed: boolean;

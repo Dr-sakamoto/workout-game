@@ -143,6 +143,13 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   position: relative; z-index: 1; font-size: 8px; line-height: 1.3; color: #66666c; margin-top: auto;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* 残留枠: 避けがちな行動を置き続ける枠 */
+.sticker.stay { border: 2px dashed var(--text); }
+.stay-tag {
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); z-index: 2;
+  font-size: 7.5px; font-weight: 800; line-height: 1; white-space: nowrap;
+  padding: 2px 4px; border-radius: 6px; background: var(--text); color: #fff;
+}
 .sticker.asking { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--stamp), 0 6px 12px rgba(0, 0, 0, 0.25); }
 
 /* キラ度(楽しさ) */
