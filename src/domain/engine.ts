@@ -169,11 +169,10 @@ export function buildPlan(input: EngineInput): DrawPlan {
     if (priority === "high") w *= 3;
     w *= energyFit(a, mood, week?.busy);
 
-    // 前日のカードに載ったもの・やらずに上納が続いたものは出にくく(ただし急ぎの防御は残す)
+    // 前日のカードに載ったものは出にくく(ただし急ぎの防御は残す)。
+    // やらずに上納したものは出やすさを下げない(避けている行動が見えなくならないように)
     const recentlyDrawn = draws.some((d) => d.actionId === a.id && nowMs - d.at < 20 * HOUR);
     if (recentlyDrawn && !urgent) w *= 0.4;
-    const skips = weekDraws.filter((d) => d.actionId === a.id && d.outcome === "skipped").length;
-    w *= urgent ? Math.max(0.4, Math.pow(0.7, skips)) : Math.pow(0.7, skips);
     if (a.kind === "offense") {
       const last = lastDoneAt(a.id, draws);
       if (last !== undefined && nowMs - last < 12 * HOUR) w *= 0.6;

@@ -84,11 +84,11 @@ describe("buildPlan", () => {
     expect(get("light") / get("heavy")).toBeGreaterThan(w([]));
   });
 
-  it("やらずに上納が続いた行動は出にくくなる", () => {
+  it("やらずに上納しても出やすさは下がらない", () => {
     const skipped = [draw("a", 2, "skipped"), { ...draw("a", 1.9, "skipped"), id: "s2" }];
     const plan = buildPlan({ actions: [base({ id: "a" }), base({ id: "b" })], draws: skipped, now });
     const w = (id: string) => plan.offense.find((c) => c.action.id === id)!.weight;
-    expect(w("a")).toBeLessThan(w("b"));
+    expect(w("a")).toBeCloseTo(w("b"));
   });
 });
 
