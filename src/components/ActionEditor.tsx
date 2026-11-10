@@ -220,6 +220,16 @@ export function ActionEditor({
           <p className="field-hint">ステッカーに大きく出ます。空のままだと上の文になります。</p>
         </div>
 
+        {/* ダブり */}
+        <div className="field">
+          <div className="field-label">ガチャでのダブり</div>
+          <div className="segmented">
+            <button className={!d.noDupe ? "active" : ""} onClick={() => set({ noDupe: false })}>ダブってOK</button>
+            <button className={d.noDupe ? "active" : ""} onClick={() => set({ noDupe: true })}>ダブりはNG</button>
+          </div>
+          <p className="field-hint">{d.noDupe ? "1回のガチャで、1枚までしか出ません。" : "1回のガチャで、同じ行動が何枚も出ることがあります。"}</p>
+        </div>
+
         {action && (
           <button className="ghost danger" onClick={remove}>この行動をガチャから外す</button>
         )}

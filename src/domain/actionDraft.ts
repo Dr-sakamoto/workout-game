@@ -18,6 +18,8 @@ export interface ActionDraft {
   deadline: string;
   /** timing が repeat のとき使う */
   intervalDays: number;
+  /** ガチャでダブらせない */
+  noDupe: boolean;
 }
 
 export const DEFAULT_STARTER = "タイマーを3分セットして、とりあえず始める";
@@ -52,6 +54,7 @@ export function newDraft(group: string = FREE, title = ""): ActionDraft {
     timing: "repeat",
     deadline: "",
     intervalDays: 7,
+    noDupe: false,
   };
 }
 
@@ -66,6 +69,7 @@ export function draftFromAction(a: Action): ActionDraft {
     timing: a.deadline ? "deadline" : "repeat",
     deadline: a.deadline ?? "",
     intervalDays: a.intervalDays ?? 7,
+    noDupe: !!a.noDupe,
   };
 }
 
@@ -95,5 +99,6 @@ export function draftToFields(d: ActionDraft) {
     goalId: goal ? d.group : undefined,
     deadline,
     intervalDays,
+    noDupe: d.noDupe || undefined,
   };
 }
