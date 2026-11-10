@@ -28,6 +28,8 @@ export interface Action {
   deadline?: string;
   /** 繰り返し行動の目安間隔(日)。前回完了からの経過で必要度が上がる */
   intervalDays?: number;
+  /** true なら、1回のガチャ(10連)の中でダブらない。未指定はダブりOK */
+  noDupe?: boolean;
   archived?: boolean;
   createdAt: number;
 }

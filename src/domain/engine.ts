@@ -221,14 +221,18 @@ export function drawStickers(
 ): Action[] {
   const plan = buildPlan(input);
   const keep = (c: Candidate) => !exclude.includes(c.action.id);
-  const defense = plan.defense.filter(keep);
-  const offense = plan.offense.filter(keep);
+  let defense = plan.defense.filter(keep);
+  let offense = plan.offense.filter(keep);
   const picked: Action[] = [];
-  if (defense.length + offense.length === 0) return picked;
-  while (picked.length < count) {
+  while (picked.length < count && defense.length + offense.length > 0) {
     const preferred = rng() < plan.pDefense ? defense : offense;
     const c = pickWeighted(preferred.length ? preferred : [...defense, ...offense], rng)!;
     picked.push(c.action);
+    // ダブりNGの行動は、1回出たらこのガチャの候補から外す
+    if (c.action.noDupe) {
+      defense = defense.filter((x) => x !== c);
+      offense = offense.filter((x) => x !== c);
+    }
   }
   return picked;
 }

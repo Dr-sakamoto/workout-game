@@ -113,6 +113,21 @@ describe("drawStickers", () => {
     }
   });
 
+  it("ダブりNGの行動は1回のガチャで1枚まで。他はダブってよい", () => {
+    const actions = [base({ id: "a", noDupe: true }), base({ id: "b" }), base({ id: "c", noDupe: true })];
+    for (let i = 0; i < 30; i++) {
+      const picked = drawStickers({ actions, draws: [], now });
+      expect(picked).toHaveLength(10);
+      expect(picked.filter((a) => a.id === "a").length).toBeLessThanOrEqual(1);
+      expect(picked.filter((a) => a.id === "c").length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("ダブりNGだけだと、行動の数までしか出ない", () => {
+    const actions = ["a", "b"].map((id) => base({ id, noDupe: true }));
+    expect(drawStickers({ actions, draws: [], now })).toHaveLength(2);
+  });
+
   it("行動が1つでも10連できる。行動がなければ空", () => {
     expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(10);
     expect(drawStickers({ actions: [], draws: [], now })).toHaveLength(0);
