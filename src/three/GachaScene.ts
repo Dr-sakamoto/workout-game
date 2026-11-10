@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { agedGlass, agedMetal, agedPaint } from "./aging";
+import { contactShadow } from "./aging";
+import { buildMachine, EXIT_Y, HANDLE_CENTER, HANDLE_RADIUS, makeCapsule, type Machine } from "./machine";
 import { sound } from "../lib/sound";
 
 export interface SceneCallbacks {
@@ -16,12 +16,9 @@ export interface SceneCallbacks {
   onHandleMoved?: (x: number, y: number, radius: number) => void;
 }
 
-const RED = "#8e1016";
-/** 取り出し口の高さ */
-const EXIT_Y = 0.735;
-
 const ease = {
   outCubic: (t: number) => 1 - Math.pow(1 - t, 3),
+  inOutQuad: (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
 };
 
 interface Tween {
@@ -78,22 +75,6 @@ void main() {
 
 // ---------- 部品 ----------
 
-function capsuleMaterial(kira: number) {
-  switch (kira) {
-    case 2:
-      return new THREE.MeshPhysicalMaterial({ color: "#d9dde3", metalness: 0.9, roughness: 0.25, clearcoat: 1 });
-    case 3:
-      return new THREE.MeshPhysicalMaterial({ color: "#e6c27a", metalness: 0.9, roughness: 0.25, clearcoat: 1 });
-    case 4:
-      return new THREE.MeshPhysicalMaterial({
-        color: "#ffffff", roughness: 0.15, iridescence: 1, iridescenceIOR: 2.0,
-        iridescenceThicknessRange: [200, 900], clearcoat: 1, metalness: 0.3,
-      });
-    default:
-      return new THREE.MeshPhysicalMaterial({ color: "#f4f4f6", roughness: 0.35, clearcoat: 0.8 });
-  }
-}
-
 /**
  * 金属の映り込み用のスタジオ。暗い部屋に細長いライトを置いて、
  * 反射にくっきりした明暗(コントラスト)が出るようにする
@@ -117,25 +98,6 @@ function studio() {
   return room;
 }
 
-/** 上半分=キラ度に応じた質感、下半分=半透明のカプセル */
-function makeCapsule(r: number, kira: number) {
-  const g = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), capsuleMaterial(kira));
-  const bottom = new THREE.Mesh(
-    new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-    new THREE.MeshPhysicalMaterial({ color: "#eeeef2", roughness: 0.1, transparent: true, opacity: 0.85, clearcoat: 1 }),
-  );
-  const seam = new THREE.Mesh(
-    new THREE.TorusGeometry(r, r * 0.04, 8, 48),
-    new THREE.MeshStandardMaterial({ color: "#e8e8ec", roughness: 0.4 }),
-  );
-  seam.rotation.x = Math.PI / 2;
-  top.castShadow = bottom.castShadow = true;
-  g.add(top, bottom, seam);
-  g.userData = { top, bottom, seam };
-  return g;
-}
-
 export class GachaScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -148,11 +110,13 @@ export class GachaScene {
   private raf = 0;
   private ro: ResizeObserver;
 
-  private machine = new THREE.Group();
-  private rotor = new THREE.Group();
+  private model: Machine;
+  private machine: THREE.Group;
+  private rotor: THREE.Group;
+  private flap: THREE.Group;
   private handleHit: THREE.Mesh;
-  private handleCenter = new THREE.Vector3(0, 1.57, 0.75);
-  private pile: THREE.Group[] = [];
+  private handleCenter = HANDLE_CENTER.clone();
+  private pile: THREE.Group[];
   private capsule?: THREE.Group;
   private bits: { mesh: THREE.Mesh; v: THREE.Vector3 }[] = [];
 
@@ -188,8 +152,12 @@ export class GachaScene {
     });
     this.bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.bgMat));
 
+    this.model = buildMachine();
+    this.machine = this.model.group;
+    this.rotor = this.model.rotor;
+    this.flap = this.model.flap;
+    this.pile = this.model.pile;
     this.buildWorld();
-    this.buildMachine();
     this.handleHit = new THREE.Mesh(
       new THREE.CylinderGeometry(0.6, 0.6, 0.3, 24),
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
@@ -218,105 +186,39 @@ export class GachaScene {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     s.environment = pmrem.fromScene(studio(), 0.02).texture;
     pmrem.dispose();
-    s.add(new THREE.HemisphereLight("#ffffff", "#e4e4ea", 0.8));
-    const key = new THREE.DirectionalLight("#ffffff", 1.5);
-    key.position.set(3, 8, 6);
+    s.add(new THREE.HemisphereLight("#ffffff", "#e4e4ea", 0.75));
+    const key = new THREE.DirectionalLight("#fff6ea", 1.7);
+    key.position.set(1.4, 10, 3.6);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -5;
-    key.shadow.camera.right = 5;
-    key.shadow.camera.top = 7;
-    key.shadow.camera.bottom = -3;
-    key.shadow.radius = 6;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -3;
+    key.shadow.camera.right = 3;
+    key.shadow.camera.top = 4.5;
+    key.shadow.camera.bottom = -2.5;
+    key.shadow.camera.near = 4;
+    key.shadow.camera.far = 18;
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.012;
+    key.shadow.radius = 5;
     s.add(key);
+    // 奥からの光で輪郭を立たせる
+    const rim = new THREE.DirectionalLight("#dfeaff", 0.7);
+    rim.position.set(-4, 5, -5);
+    s.add(rim);
 
-    // 背景は白いまま、影だけ落とす
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowMaterial({ opacity: 0.12 }));
+    // 背景は白いまま、影だけ落とす。落ち影は薄く、足もとの接地影で重さを出す
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowMaterial({ opacity: 0.08 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     s.add(floor);
-    s.add(this.machine);
-  }
-
-  private part(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z = 0) {
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.machine.add(mesh);
-    return mesh;
-  }
-
-  /** ラフの比率(200px = 1)を少し低めにして組む。使い込まれた赤い胴体とフタ・メタル・青緑のガラス */
-  private buildMachine() {
-    const paint = agedPaint(RED);
-    const red = new THREE.MeshPhysicalMaterial({
-      color: "#ffffff", map: paint.map, roughness: 1, roughnessMap: paint.roughnessMap,
-      clearcoat: 0.35, clearcoatRoughness: 0.4,
-    });
-    const steel = agedMetal("#d8dce2");
-    const metal = new THREE.MeshStandardMaterial({
-      color: "#ffffff", map: steel.map, metalness: 1, roughness: 1, roughnessMap: steel.roughnessMap,
-      envMapIntensity: 1.5,
-    });
-
-    // 脚
-    for (const x of [-0.75, 0.75]) this.part(new RoundedBoxGeometry(0.16, 0.24, 0.3, 3, 0.03), metal, x, 0.12);
-    // 胴体
-    this.part(new RoundedBoxGeometry(2.09, 1.85, 1.4, 5, 0.1), red, 0, 1.165);
-
-    // ハンドル: メタルの円盤 + 太めのつまみ
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.035, 16, 64), metal);
-    ring.position.copy(this.handleCenter).setZ(0.71);
-    this.machine.add(ring);
-    const disk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.08, 64), metal);
-    disk.rotation.x = Math.PI / 2;
-    disk.castShadow = true;
-    const grip = new THREE.Mesh(new RoundedBoxGeometry(0.64, 0.2, 0.2, 3, 0.07), metal);
-    grip.position.z = 0.11;
-    grip.castShadow = true;
-    this.rotor.add(disk, grip);
-    this.rotor.position.copy(this.handleCenter);
-    this.machine.add(this.rotor);
-
-    // 取り出し口: メタルの枠 + 暗い穴
-    this.part(new RoundedBoxGeometry(0.7, 0.62, 0.08, 3, 0.03), metal, 0, EXIT_Y, 0.7);
-    const hole = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.47), new THREE.MeshBasicMaterial({ color: "#121214" }));
-    hole.position.set(0, EXIT_Y, 0.7415);
-    this.machine.add(hole);
-
-    // ガラスケース(うっすら青緑) + 台座 + 四隅の柱
-    this.part(new RoundedBoxGeometry(1.5, 0.06, 1.2, 3, 0.02), metal, 0, 2.12);
-    const glass = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 1.3, 1.1),
-      new THREE.MeshPhysicalMaterial({
-        color: "#8fd3c8", roughness: 0.35, roughnessMap: agedGlass(), transparent: true, opacity: 0.24,
-        clearcoat: 1, envMapIntensity: 1.6, depthWrite: false,
-      }),
+    const contact = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.3, 2.5),
+      new THREE.MeshBasicMaterial({ map: contactShadow(), transparent: true, depthWrite: false }),
     );
-    glass.position.set(0, 2.8, 0);
-    glass.renderOrder = 2;
-    this.machine.add(glass);
-    for (const [x, z] of [[-0.7, 0.55], [0.7, 0.55], [-0.7, -0.55], [0.7, -0.55]]) {
-      this.part(new THREE.CylinderGeometry(0.025, 0.025, 1.3, 12), metal, x, 2.8, z);
-    }
-    // 胴体と同じ素材の赤いフタ(厚め)
-    this.part(new RoundedBoxGeometry(1.64, 0.34, 1.32, 4, 0.06), red, 0, 3.62);
-
-    // ケースの中のカプセル(ラフの丸の配置)
-    const spots: [number, number, number, number][] = [
-      // x, y, z, r
-      [-0.32, 2.37, 0.1, 0.22], [0.08, 2.4, 0.12, 0.25], [0.4, 2.37, -0.05, 0.22],
-      [-0.3, 2.73, -0.1, 0.2], [0.12, 2.79, -0.15, 0.2], [0.36, 2.68, 0.1, 0.12], [0.5, 2.66, -0.25, 0.09],
-    ];
-    spots.forEach(([x, y, z, r], i) => {
-      const c = makeCapsule(r, [1, 4, 2, 1, 3, 4, 1][i]);
-      c.position.set(x, y, z);
-      c.rotation.set(i * 0.5, i * 1.3, i * 0.3);
-      c.userData.base = c.position.clone();
-      this.pile.push(c);
-      this.machine.add(c);
-    });
+    contact.rotation.x = -Math.PI / 2;
+    contact.position.y = 0.002;
+    s.add(contact);
+    s.add(this.machine);
   }
 
   // ---------- レイアウト ----------
@@ -349,7 +251,7 @@ export class GachaScene {
     this.camera.updateMatrixWorld();
 
     const c = this.handleCenter.clone().project(this.camera);
-    const edge = this.handleCenter.clone().add(new THREE.Vector3(0.43, 0, 0)).project(this.camera);
+    const edge = this.handleCenter.clone().add(new THREE.Vector3(HANDLE_RADIUS, 0, 0)).project(this.camera);
     this.cb.onHandleMoved?.(((c.x + 1) / 2) * w, ((1 - c.y) / 2) * h, ((edge.x - c.x) / 2) * w);
   }
 
@@ -471,25 +373,31 @@ export class GachaScene {
 
     const r = 0.26;
     const cap = makeCapsule(r, kira);
-    cap.position.set(0, EXIT_Y, 0.5);
-    cap.scale.setScalar(0.8);
+    cap.position.set(0, EXIT_Y, 0.3);
+    cap.scale.setScalar(0.75);
     this.scene.add(cap);
     this.capsule = cap;
     sound.drop();
 
-    // 取り出し口から出る
-    await this.tween(0.3, (k) => {
-      cap.position.z = 0.5 + 0.6 * ease.outCubic(k);
+    // 取り出し口の奥から、フラップを押し開けて出る
+    await this.tween(0.42, (k) => {
+      cap.position.z = 0.3 + 0.8 * ease.inOutQuad(k);
+      cap.rotation.x = k * Math.PI * 0.8;
+      this.flap.rotation.x = -1.35 * ease.outCubic(Math.min(1, k * 1.8));
+    });
+    // フラップはパタパタ揺れながら閉じる
+    void this.tween(0.9, (k) => {
+      this.flap.rotation.x = -1.35 * Math.pow(1 - k, 2) * Math.abs(Math.cos(k * Math.PI * 2.5));
     });
     // 床に落ちて、手前に転がってくる
     const landY = r * 1.6;
     await this.tween(1.0, (k) => {
       const z = 1.1 + 1.1 * ease.outCubic(k);
-      const s = 0.8 + 0.8 * ease.outCubic(k);
+      const s = 0.75 + 0.85 * ease.outCubic(k);
       const b = k < 0.45 ? 1 - Math.pow(k / 0.45, 2) : k < 0.8 ? Math.sin(((k - 0.45) / 0.35) * Math.PI) * 0.3 : 0;
       cap.position.set(0, landY + (EXIT_Y - landY) * Math.max(0, b), z);
       cap.scale.setScalar(s);
-      cap.rotation.x = k * Math.PI * 3;
+      cap.rotation.x = Math.PI * 0.8 + k * Math.PI * 3.2;
       if (Math.abs(k - 0.45) < 0.02) sound.drop();
     });
     cap.rotation.set(0.25, 0, 0);
@@ -501,7 +409,7 @@ export class GachaScene {
     if (!cap || !this.capsuleReady) return;
     this.capsuleReady = false;
     sound.pop();
-    const { top, bottom, seam } = cap.userData as Record<string, THREE.Mesh>;
+    const { top, bottom, seam, card } = cap.userData as Record<string, THREE.Object3D>;
     // 虹色のかけらを飛ばす
     for (let i = 0; i < 26; i++) {
       const mesh = new THREE.Mesh(
@@ -514,13 +422,17 @@ export class GachaScene {
       this.scene.add(mesh);
       this.bits.push({ mesh, v });
     }
+    // 上半分が跳ね上がり、中の紙が飛び出す(位置はカプセルの半径を1とした値)
     await this.tween(0.7, (k) => {
-      top.position.y = k * 1.6;
+      top.position.y = k * 6;
       top.rotation.x = -k * 2.5;
-      seam.position.y = k * 0.6;
-      bottom.scale.setScalar(1 - k);
-      seam.scale.setScalar(1 - k);
       top.scale.setScalar(1 - k * 0.6);
+      seam.position.y = k * 2.3;
+      seam.scale.setScalar(1 - k);
+      bottom.scale.setScalar(1 - k);
+      card.position.y = -0.36 + ease.outCubic(k) * 2.4;
+      card.rotation.y = 0.5 + k * 5;
+      card.scale.setScalar(1 + k * 1.2);
     });
     this.scene.remove(cap);
     this.capsule = undefined;
