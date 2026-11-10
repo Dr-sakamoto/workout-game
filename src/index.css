@@ -182,11 +182,11 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   position: absolute; left: 3px; right: 3px; bottom: 3px; z-index: 3; display: flex; flex-direction: column; gap: 4px;
   animation: fadein 0.15s;
 }
-.sticker-confirm button, .ban-confirm button {
+.sticker-confirm button {
   padding: 5px 0; font-size: 12px; font-weight: 700; border-radius: 8px; background: #fff; color: var(--text);
   border: 1.5px solid var(--text);
 }
-.sticker-confirm .yes, .ban-confirm .yes { background: var(--stamp); color: #fff; border-color: var(--stamp); }
+.sticker-confirm .yes { background: var(--stamp); color: #fff; border-color: var(--stamp); }
 
 /* 完了の印影 */
 .imprint {
@@ -220,31 +220,6 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   60% { transform: translateX(-50%) translateY(calc(50% + 36px)); opacity: 1; }
   100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
 }
-.ban .stamp-tool.pressing { animation-name: stamp-press-ban; }
-@keyframes stamp-press-ban {
-  0% { transform: translateX(-50%) translateY(-10px); }
-  45% { transform: translateX(-50%) translateY(46px) scaleY(0.92); }
-  60% { transform: translateX(-50%) translateY(42px); opacity: 1; }
-  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
-}
-
-/* 禁止事項の帯 */
-.ban {
-  position: relative; margin-top: 10px; min-height: 58px; border-radius: 10px; padding: 8px 10px 8px 12px; cursor: pointer;
-  display: flex; align-items: center; gap: 10px; color: #fff; background: var(--text);
-  animation: sticker-in 0.45s 0.8s cubic-bezier(0.2, 1.4, 0.4, 1) both;
-}
-.ban.asking { box-shadow: 0 0 0 3px var(--stamp); }
-.ban-label { flex: none; font-size: 10px; font-weight: 800; color: #fff; border: 1px solid rgba(255, 255, 255, 0.6); padding: 2px 7px; border-radius: 6px; }
-.ban-title { flex: 1; font-weight: 800; font-size: 14px; line-height: 1.3; }
-.ban-confirm { display: flex; gap: 6px; flex: none; }
-.ban-confirm button { padding: 6px 12px; border-color: #fff; }
-.ban .imprint { width: 56px; height: 56px; font-size: 15px; left: auto; right: 20px; transform: translate(0, -50%) rotate(-14deg); mix-blend-mode: normal; background: rgba(255, 255, 255, 0.85); animation-name: imprint-ban; }
-@keyframes imprint-ban {
-  from { transform: translate(0, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
-  to { transform: translate(0, -50%) rotate(-14deg) scale(1); opacity: 0.92; }
-}
-.ban.broken .ban-title { text-decoration: line-through; opacity: 0.7; }
 
 /* 上納 */
 .daily-card.mode-tribute { animation: tribute 2.2s ease-in forwards; }

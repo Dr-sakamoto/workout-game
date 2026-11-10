@@ -6,7 +6,7 @@ import { sound } from "../lib/sound";
 import { StickerFace } from "./StickerFace";
 import { stayDay } from "../domain/engine";
 
-type Confirm = { kind: "sticker"; id: string } | { kind: "ban"; step: 1 | 2 } | null;
+type Confirm = { kind: "sticker"; id: string } | null;
 
 /** live=操作できる / reveal=出てきた直後の演出 / tribute=上納中 */
 export type CardMode = "live" | "reveal" | "tribute";
@@ -22,7 +22,7 @@ function Stamp({ pressing }: { pressing: boolean }) {
 }
 
 export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode }) {
-  const { draws, actions, bans, cards, completeSticker, breakBan } = useStore();
+  const { draws, actions, cards, completeSticker } = useStore();
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [pressing, setPressing] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
@@ -36,7 +36,6 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
     // 残留枠は左端、あとは楽しいものほど左に
     .sort((a, b) => Number(b.draw.id === card.stayId) - Number(a.draw.id === card.stayId) || b.action!.fun - a.action!.fun);
   const stayN = card.stayId ? stayDay(card, cards, draws) : 0;
-  const ban = bans.find((b) => b.id === card.banId);
 
   const press = (key: string, commit: () => void) => {
     setPressing(key);
@@ -53,14 +52,7 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
   };
 
   const d = parseYmd(card.date);
-  const question =
-    confirm?.kind === "sticker"
-      ? "このタスクが終わりましたか?"
-      : confirm?.kind === "ban"
-        ? confirm.step === 1
-          ? "禁止事項を破りましたか?"
-          : "本当に破りましたか? 取り消せません"
-        : null;
+  const question = confirm ? "このタスクが終わりましたか?" : null;
 
   return (
     <div className={`daily-card mode-${mode} ${shake ? "shake" : ""}`}>
@@ -106,34 +98,6 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
         })}
         {stickers.length === 0 && <p className="card-empty">行動が登録されていません</p>}
       </div>
-
-      {ban && (
-        <div
-          className={`ban ${card.banBroken ? "broken" : ""} ${confirm?.kind === "ban" ? "asking" : ""}`}
-          onClick={() => {
-            if (!live || card.banBroken || pressing) return;
-            setConfirm(confirm?.kind === "ban" ? null : { kind: "ban", step: 1 });
-          }}
-        >
-          <span className="ban-label">今日の禁止</span>
-          <span className="ban-title">{ban.title}</span>
-          {confirm?.kind === "ban" && pressing !== "ban" && (
-            <span className="ban-confirm" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="yes"
-                onClick={() =>
-                  confirm.step === 1 ? setConfirm({ kind: "ban", step: 2 }) : press("ban", () => breakBan(card.date))
-                }
-              >
-                はい
-              </button>
-              <button onClick={() => setConfirm(null)}>いいえ</button>
-            </span>
-          )}
-          {(confirm?.kind === "ban" || pressing === "ban") && <Stamp pressing={pressing === "ban"} />}
-          {card.banBroken && <div className="imprint">違反</div>}
-        </div>
-      )}
 
       {mode === "tribute" && <div className="tribute-label">上納</div>}
     </div>

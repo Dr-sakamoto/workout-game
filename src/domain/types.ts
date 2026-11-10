@@ -32,7 +32,7 @@ export interface Action {
   createdAt: number;
 }
 
-/** その日やってはいけないこと */
+/** その日やってはいけないこと(廃止済み。過去のデータのためだけに型を残す) */
 export interface Ban {
   id: string;
   title: string;

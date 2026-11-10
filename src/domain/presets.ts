@@ -21,7 +21,7 @@ export const OFFENSE_PRESETS: Preset[] = [
   { title: "新しいことを調べる", kind: "offense", starter: "気になっていた言葉を1つ検索してメモする", energy: 1, loss: 1, fun: 3 },
 ];
 
-/** 初回に選ぶだけで使える禁止事項 */
+/** 以前の初回設定で使っていた禁止事項(廃止済み。古いデータの移行でだけ使う) */
 export const BAN_PRESETS: string[] = [
   "寝る前1時間のスマホ",
   "SNSの無限スクロール",

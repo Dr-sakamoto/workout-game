@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Action, Ban, Busy, DailyCard, Draw, MonthPlan, Priority, WeekPlan, YearGoal } from "../domain/types";
 import { BAN_PRESETS, actionsForGoal, inferKind } from "../domain/presets";
-import { STICKERS_PER_CARD, drawStickers, pickBan, pickStay } from "../domain/engine";
+import { STICKERS_PER_CARD, drawStickers, pickStay } from "../domain/engine";
 import { weekStartOf, ym, ymd } from "../domain/dates";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -14,29 +14,26 @@ interface State {
   onboarded: boolean;
   goals: YearGoal[];
   actions: Action[];
+  /** 禁止事項(廃止済み)。過去のデータを残すためだけに持っている */
   bans: Ban[];
   months: Record<string, MonthPlan>;
   weeks: Record<string, WeekPlan>;
   draws: Draw[];
   cards: DailyCard[];
 
-  finishOnboarding: (presets: NewAction[], bans: string[]) => void;
+  finishOnboarding: (presets: NewAction[]) => void;
   addGoal: (title: string, why: string) => void;
   updateGoal: (id: string, patch: Partial<Omit<YearGoal, "id">>) => void;
   removeGoal: (id: string) => void;
   addAction: (a: ActionInput) => void;
   updateAction: (id: string, patch: Partial<ActionInput>) => void;
   removeAction: (id: string) => void;
-  addBan: (title: string) => void;
-  updateBan: (id: string, title: string) => void;
-  removeBan: (id: string) => void;
   setMonth: (patch: Partial<Omit<MonthPlan, "month">>) => void;
   setWeek: (patch: { busy?: Busy }) => void;
   setPriority: (actionId: string, p: Priority) => void;
   /** 今日のカードを引く。すでに引いていれば何もしない */
   drawCard: (now?: Date) => DailyCard | undefined;
   completeSticker: (drawId: string) => void;
-  breakBan: (date: string) => void;
   /** 今日より前のカードを上納する。やらなかったステッカーは skipped になる */
   tribute: (now?: Date) => void;
 }
@@ -79,11 +76,10 @@ export const useStore = create<State>()(
       draws: [],
       cards: [],
 
-      finishOnboarding: (presets, bans) =>
+      finishOnboarding: (presets) =>
         set((s) => ({
           onboarded: true,
           actions: [...s.actions, ...presets.map((p) => ({ ...p, id: uid(), createdAt: Date.now() }))],
-          bans: [...s.bans, ...bans.map(newBan)],
         })),
 
       addGoal: (title, why) =>
@@ -116,10 +112,6 @@ export const useStore = create<State>()(
 
       removeAction: (id) =>
         set((s) => ({ actions: s.actions.map((a) => (a.id === id ? { ...a, archived: true } : a)) })),
-
-      addBan: (title) => set((s) => ({ bans: [...s.bans, newBan(title)] })),
-      updateBan: (id, title) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, title } : b)) })),
-      removeBan: (id) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, archived: true } : b)) })),
 
       setMonth: (patch) =>
         set((s) => {
@@ -163,12 +155,10 @@ export const useStore = create<State>()(
           outcome: "pending",
           cardDate: date,
         }));
-        const ban = pickBan(s.bans, s.cards, now);
         const card: DailyCard = {
           date,
           drawIds: draws.map((d) => d.id),
           stayId: stay ? draws[0].id : undefined,
-          banId: ban?.id,
           banBroken: false,
           tributed: false,
           drawnAt: now.getTime(),
@@ -191,9 +181,6 @@ export const useStore = create<State>()(
                 : s.actions,
           };
         }),
-
-      breakBan: (date) =>
-        set((s) => ({ cards: s.cards.map((c) => (c.date === date ? { ...c, banBroken: true } : c)) })),
 
       tribute: (now = new Date()) =>
         set((s) => {

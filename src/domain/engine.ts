@@ -1,4 +1,4 @@
-import type { Action, Ban, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
+import type { Action, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
 import { HOUR, daysBetween, daysUntil, weekStartOf, parseYmd, ymd } from "./dates";
 import { FREE, LIFE, groupOf, normalizeShares, sliceKeys } from "./shares";
 
@@ -295,28 +295,4 @@ export function pickStay(
     if (!best || n > best.n) best = { action: a, n };
   }
   return best && { action: best.action, day: 1 };
-}
-
-/**
- * 今日の禁止事項を選ぶ。最近破ったものほど出やすく、前日と同じものは出にくい。
- */
-export function pickBan(
-  bans: Ban[],
-  cards: DailyCard[],
-  now: Date,
-  rng: () => number = Math.random,
-): Ban | undefined {
-  const active = bans.filter((b) => !b.archived);
-  const since = new Date(now);
-  since.setDate(since.getDate() - 14);
-  const sinceKey = ymd(since);
-  const recent = cards.filter((c) => c.date >= sinceKey);
-  const last = [...cards].sort((a, b) => b.date.localeCompare(a.date))[0];
-  const weighted = active.map((b) => {
-    const broken = recent.filter((c) => c.banId === b.id && c.banBroken).length;
-    let weight = 1 + 1.5 * broken;
-    if (last?.banId === b.id) weight *= 0.3;
-    return { ban: b, weight };
-  });
-  return pickWeighted(weighted, rng)?.ban;
 }

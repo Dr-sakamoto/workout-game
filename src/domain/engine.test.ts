@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan, defenseNeed, drawStickers, goalBoosts, inferMood, pickBan, pickStay, stayDay } from "./engine";
-import type { Action, Ban, DailyCard, Draw, MonthPlan } from "./types";
+import { buildPlan, defenseNeed, drawStickers, goalBoosts, inferMood, pickStay, stayDay } from "./engine";
+import type { Action, DailyCard, Draw, MonthPlan } from "./types";
 import { inferKind } from "./presets";
 import { FREE, LIFE, MIN_SHARE, equalPercents, groupOf, moveBoundary, normalizeShares, sliceKeys } from "./shares";
 
@@ -116,35 +116,6 @@ describe("drawStickers", () => {
   it("行動が1つでも10連できる。行動がなければ空", () => {
     expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(10);
     expect(drawStickers({ actions: [], draws: [], now })).toHaveLength(0);
-  });
-});
-
-describe("pickBan", () => {
-  const bans: Ban[] = [
-    { id: "sns", title: "SNS", createdAt: 0 },
-    { id: "buy", title: "衝動買い", createdAt: 0 },
-  ];
-
-  it("最近破った禁止事項ほど出やすい", () => {
-    const cards = [
-      card("2026-10-15", { banId: "buy", banBroken: true }),
-      card("2026-10-16", { banId: "buy", banBroken: true }),
-      card("2026-10-17", { banId: "sns" }),
-    ];
-    let buy = 0;
-    for (let i = 0; i < 400; i++) if (pickBan(bans, cards, now)?.id === "buy") buy++;
-    expect(buy).toBeGreaterThan(300);
-  });
-
-  it("前日と同じ禁止事項は出にくい", () => {
-    const cards = [card("2026-10-20", { banId: "sns" })];
-    let sns = 0;
-    for (let i = 0; i < 400; i++) if (pickBan(bans, cards, now)?.id === "sns") sns++;
-    expect(sns).toBeLessThan(140);
-  });
-
-  it("禁止事項がなければ何も返さない", () => {
-    expect(pickBan([], [], now)).toBeUndefined();
   });
 });
 
