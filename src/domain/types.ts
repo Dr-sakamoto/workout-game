@@ -82,6 +82,8 @@ export interface Draw {
   /** どの日のカードか(YYYY-MM-DD) */
   cardDate: string;
   resolvedAt?: number;
+  /** 完了したときに決まったXP(過酷な行動のみ。上納のときにだけ見せる) */
+  xp?: number;
 }
 
 /** 1日1枚のカード(台紙)。日付が変わると上納される */

@@ -37,10 +37,11 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
     .sort((a, b) => Number(b.draw.id === card.stayId) - Number(a.draw.id === card.stayId) || b.action!.fun - a.action!.fun);
   const stayN = card.stayId ? stayDay(card, cards, draws) : 0;
 
-  const press = (key: string, commit: () => void) => {
+  const press = (key: string, commit: () => void, heavy = false) => {
     setPressing(key);
     setTimeout(() => {
-      sound.stamp();
+      if (heavy) sound.stampHeavy();
+      else sound.stamp();
       commit();
       setShake(true);
     }, 280);
@@ -87,12 +88,12 @@ export function DailyCardView({ card, mode }: { card: DailyCard; mode: CardMode 
               {stay && <div className="stay-tag">残留 {stayN}日目</div>}
               {asking && pressing !== draw.id && (
                 <div className="sticker-confirm" onClick={(e) => e.stopPropagation()}>
-                  <button className="yes" onClick={() => press(draw.id, () => completeSticker(draw.id))}>はい</button>
+                  <button className="yes" onClick={() => press(draw.id, () => completeSticker(draw.id), a.energy === 3)}>はい</button>
                   <button onClick={() => setConfirm(null)}>いいえ</button>
                 </div>
               )}
               {(asking || pressing === draw.id) && <Stamp pressing={pressing === draw.id} />}
-              {done && <div className="imprint">完了</div>}
+              {done && <div className={`imprint ${a.energy === 3 ? "hard" : ""}`}>完了</div>}
             </div>
           );
         })}

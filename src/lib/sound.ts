@@ -71,6 +71,13 @@ export const sound = {
     noise(0.08, 0.35, 1200);
     buzz(25);
   },
+  /** 過酷な行動のハンコ: 重く、あとにキラッと鳴る */
+  stampHeavy() {
+    tone(90, 0.32, "sine", 0.6, 38);
+    noise(0.14, 0.45, 900);
+    setTimeout(() => tone(1760, 0.3, "triangle", 0.08, 2640), 120);
+    buzz(45);
+  },
   /** 上納 */
   chime() {
     [660, 880, 1320].forEach((f, i) => setTimeout(() => tone(f, 0.35, "sine", 0.12), i * 110));

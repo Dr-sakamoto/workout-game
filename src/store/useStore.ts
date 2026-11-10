@@ -4,6 +4,7 @@ import type { Action, Ban, Busy, DailyCard, Draw, MonthPlan, Priority, WeekPlan,
 import { BAN_PRESETS, actionsForGoal, inferKind } from "../domain/presets";
 import { STICKERS_PER_CARD, drawStickers, pickStay } from "../domain/engine";
 import { weekStartOf, ym, ymd } from "../domain/dates";
+import { rollXp } from "../domain/xp";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -173,7 +174,11 @@ export const useStore = create<State>()(
           if (!target || target.outcome !== "pending") return {};
           const action = s.actions.find((a) => a.id === target.actionId);
           return {
-            draws: s.draws.map((d) => (d.id === drawId ? { ...d, outcome: "done", resolvedAt: Date.now() } : d)),
+            draws: s.draws.map((d) =>
+              d.id === drawId
+                ? { ...d, outcome: "done", resolvedAt: Date.now(), ...(action?.energy === 3 ? { xp: rollXp() } : {}) }
+                : d,
+            ),
             // 期限付きの一回きりタスクは完了したら抽選対象から外す
             actions:
               action?.deadline && !action.intervalDays

@@ -5,7 +5,7 @@ import { DailyCardView } from "./DailyCardView";
 import { Settings } from "./Settings";
 import { ymd } from "../domain/dates";
 import { sound } from "../lib/sound";
-import { gainedXp, levelOf, totalXp } from "../domain/xp";
+import { bonusOf, gainedXp, levelOf, totalXp } from "../domain/xp";
 
 /**
  * tribute=前日までのカードを上納中 / ready=ハンドルを回せる / dropping=カプセルが出てくる途中
@@ -26,7 +26,7 @@ export function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [day, setDay] = useState(() => ymd(new Date()));
   // XPとレベルは上納の瞬間にだけ見せる(普段は出さない)
-  const [xpBanner, setXpBanner] = useState<{ gain: number; xp: number; level: number; up: boolean } | null>(null);
+  const [xpBanner, setXpBanner] = useState<{ gain: number; xp: number; level: number; up: boolean; bonus: number } | null>(null);
   const [handlePos, setHandlePos] = useState<{ x: number; y: number; r: number } | null>(null);
 
   function initialPhase(): Phase {
@@ -113,10 +113,11 @@ export function Home() {
       sound.chime();
       sceneRef.current?.receiveTribute();
       const s = useStore.getState();
-      const gain = gainedXp(staleCards(s), s.draws, s.actions);
+      const stale = staleCards(s);
+      const gain = gainedXp(stale, s.draws, s.actions);
       const before = totalXp(s.cards, s.draws, s.actions);
       const xp = before + gain;
-      setXpBanner({ gain, xp, level: levelOf(xp), up: levelOf(xp) > levelOf(before) });
+      setXpBanner({ gain, xp, level: levelOf(xp), up: levelOf(xp) > levelOf(before), bonus: bonusOf(stale, s.draws) });
       setTimeout(() => setXpBanner(null), 3600);
     }, 1300);
     const t2 = setTimeout(() => {
@@ -157,6 +158,7 @@ export function Home() {
         <div className={`xp-banner ${xpBanner.up ? "up" : ""}`}>
           <div className="xp-lv">Lv {xpBanner.level}{xpBanner.up && " ↑"}</div>
           <div className="xp-gain">{xpBanner.gain > 0 ? `+${xpBanner.gain} XP` : "+0 XP"}</div>
+          {xpBanner.bonus > 1 && <div className="xp-bonus">ボーナス ×{xpBanner.bonus}!</div>}
           <div className="xp-total">{xpBanner.xp} XP</div>
         </div>
       )}

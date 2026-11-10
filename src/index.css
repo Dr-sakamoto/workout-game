@@ -201,6 +201,17 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   from { transform: translate(-50%, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
   to { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.88; }
 }
+/* 過酷な行動の完了は金のハンコ(数字は出さない) */
+.imprint.hard {
+  color: #b9851c; border-color: #b9851c; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #b9851c, 0 0 10px rgba(240, 190, 60, 0.7);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 240, 180, 0.6), rgba(255, 255, 255, 0.15));
+  mix-blend-mode: normal; animation: imprint-hard 0.45s ease-out both;
+}
+@keyframes imprint-hard {
+  0% { transform: translate(-50%, -50%) rotate(-14deg) scale(2.2); opacity: 0; }
+  60% { transform: translate(-50%, -50%) rotate(-14deg) scale(0.92); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.95; }
+}
 .sticker.done .sticker-face { filter: saturate(0.7) brightness(0.97); }
 
 /* ハンコ */
@@ -353,5 +364,6 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .xp-banner.up { background: var(--stamp); }
 .xp-lv { font-size: 22px; font-weight: 900; }
 .xp-gain { font-size: 15px; font-weight: 800; margin-top: 2px; }
+.xp-bonus { font-size: 12px; font-weight: 900; color: #ffd75e; margin-top: 2px; }
 .xp-total { font-size: 11px; opacity: 0.7; margin-top: 2px; }
 @keyframes xp-in { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
