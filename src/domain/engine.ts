@@ -26,7 +26,7 @@ export interface DrawPlan {
 }
 
 /** 1枚のカードに載るステッカーの数 */
-export const STICKERS_PER_CARD = 4;
+export const STICKERS_PER_CARD = 10;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -213,22 +213,20 @@ function pickWeighted<T extends { weight: number }>(items: T[], rng: () => numbe
   return items[items.length - 1];
 }
 
-/** 今日のカードに載せる行動を重複なしで選ぶ */
+/** 今日のカードに載せる行動を選ぶ(10連。同じ行動が複数回出る「ダブり」あり) */
 export function drawStickers(
   input: EngineInput,
   count = STICKERS_PER_CARD,
   rng: () => number = Math.random,
 ): Action[] {
   const plan = buildPlan(input);
-  let defense = plan.defense;
-  let offense = plan.offense;
+  const { defense, offense } = plan;
   const picked: Action[] = [];
-  while (picked.length < count && defense.length + offense.length > 0) {
+  if (defense.length + offense.length === 0) return picked;
+  while (picked.length < count) {
     const preferred = rng() < plan.pDefense ? defense : offense;
     const c = pickWeighted(preferred.length ? preferred : [...defense, ...offense], rng)!;
     picked.push(c.action);
-    defense = defense.filter((x) => x !== c);
-    offense = offense.filter((x) => x !== c);
   }
   return picked;
 }

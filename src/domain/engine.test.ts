@@ -103,17 +103,18 @@ describe("goalBoosts", () => {
 });
 
 describe("drawStickers", () => {
-  it("重複なしで4枚選ぶ", () => {
-    const actions = ["a", "b", "c", "d", "e", "f"].map((id) => base({ id }));
+  it("ダブりありで10枚選ぶ", () => {
+    const actions = ["a", "b", "c"].map((id) => base({ id }));
     for (let i = 0; i < 20; i++) {
       const picked = drawStickers({ actions, draws: [], now });
-      expect(picked).toHaveLength(4);
-      expect(new Set(picked.map((a) => a.id)).size).toBe(4);
+      expect(picked).toHaveLength(10);
+      // 行動が3つしかなくても10枚出る=ダブりが出る
+      expect(new Set(picked.map((a) => a.id)).size).toBeLessThanOrEqual(3);
     }
   });
 
-  it("行動が4つ未満ならあるだけ選ぶ", () => {
-    expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(1);
+  it("行動が1つでも10連できる。行動がなければ空", () => {
+    expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(10);
     expect(drawStickers({ actions: [], draws: [], now })).toHaveLength(0);
   });
 });

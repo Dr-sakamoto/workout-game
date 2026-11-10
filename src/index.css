@@ -124,24 +124,24 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .card-count { background: var(--text); color: #fff; border-radius: 99px; padding: 1px 8px; }
 .card-empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; }
 
-.stickers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.stickers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .sticker {
-  position: relative; aspect-ratio: 3 / 4.4; border-radius: 12px; padding: 3px; cursor: pointer;
+  position: relative; aspect-ratio: 3 / 3.6; border-radius: 10px; padding: 2px; cursor: pointer;
   background: #fff; border: 1.5px solid var(--text);
   animation: sticker-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 @keyframes sticker-in { from { transform: scale(0.2) rotate(-20deg); opacity: 0; } }
 .sticker-face {
-  position: relative; height: 100%; border-radius: 9px; overflow: hidden; padding: 7px 5px;
+  position: relative; height: 100%; border-radius: 9px; overflow: hidden; padding: 5px 4px;
   display: flex; flex-direction: column; gap: 4px; background: #fff;
 }
 .sticker-title {
-  position: relative; z-index: 1; font-size: 11px; font-weight: 800; line-height: 1.3;
+  position: relative; z-index: 1; font-size: 9.5px; font-weight: 800; line-height: 1.25;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .sticker-starter {
-  position: relative; z-index: 1; font-size: 9.5px; line-height: 1.35; color: #66666c; margin-top: auto;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  position: relative; z-index: 1; font-size: 8px; line-height: 1.3; color: #66666c; margin-top: auto;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .sticker.asking { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--stamp), 0 6px 12px rgba(0, 0, 0, 0.25); }
 
