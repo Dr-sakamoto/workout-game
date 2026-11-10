@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
-import { BAN_PRESETS, DEFENSE_PRESETS, OFFENSE_PRESETS } from "../domain/presets";
+import { DEFENSE_PRESETS, OFFENSE_PRESETS } from "../domain/presets";
 
 export function Onboarding() {
   const { goals, addGoal, removeGoal, finishOnboarding } = useStore();
@@ -9,7 +9,6 @@ export function Onboarding() {
   const [why, setWhy] = useState("");
   const [def, setDef] = useState(() => DEFENSE_PRESETS.map(() => true));
   const [off, setOff] = useState(() => OFFENSE_PRESETS.map(() => true));
-  const [ban, setBan] = useState(() => BAN_PRESETS.map(() => true));
 
   const submitGoal = () => {
     if (!title.trim()) return;
@@ -19,10 +18,7 @@ export function Onboarding() {
   };
 
   const finish = () =>
-    finishOnboarding(
-      [...DEFENSE_PRESETS.filter((_, i) => def[i]), ...OFFENSE_PRESETS.filter((_, i) => off[i])],
-      BAN_PRESETS.filter((_, i) => ban[i]),
-    );
+    finishOnboarding([...DEFENSE_PRESETS.filter((_, i) => def[i]), ...OFFENSE_PRESETS.filter((_, i) => off[i])]);
 
   return (
     <div className="app">
@@ -32,7 +28,7 @@ export function Onboarding() {
             <h1>行動ガチャ</h1>
             <p className="lead">1日1回ハンドルを回すと、今日のカードが出てきます。</p>
             <p className="muted">
-              カードには今日やることのステッカーが4枚と、今日の禁止事項が1つ。
+              カードには今日やることのステッカーが10枚(ダブりあり)。
               楽しいことほどキラキラのステッカーになります。終わったらハンコを押すだけ。
             </p>
             <p className="muted">
@@ -86,27 +82,10 @@ export function Onboarding() {
                 </li>
               ))}
             </ul>
-            <button className="primary" onClick={() => setStep(3)}>次へ</button>
-          </section>
-        )}
-
-        {step === 3 && (
-          <section>
-            <h2>禁止事項</h2>
-            <p className="muted">毎日このうち1つがカードの下の帯に出ます。</p>
-            <ul className="list">
-              {BAN_PRESETS.map((p, i) => (
-                <li key={p}>
-                  <label className="check">
-                    <input type="checkbox" checked={ban[i]} onChange={() => setBan(ban.map((v, j) => (j === i ? !v : v)))} />
-                    {p}
-                  </label>
-                </li>
-              ))}
-            </ul>
             <button className="primary" onClick={finish}>ガチャのところへ行く</button>
           </section>
         )}
+
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan, defenseNeed, drawStickers, goalBoosts, inferMood, pickBan } from "./engine";
-import type { Action, Ban, DailyCard, Draw, MonthPlan } from "./types";
+import { buildPlan, defenseNeed, drawStickers, goalBoosts, inferMood, pickStay, stayDay } from "./engine";
+import type { Action, DailyCard, Draw, MonthPlan } from "./types";
 import { inferKind } from "./presets";
 import { FREE, LIFE, MIN_SHARE, equalPercents, groupOf, moveBoundary, normalizeShares, sliceKeys } from "./shares";
 
@@ -84,11 +84,11 @@ describe("buildPlan", () => {
     expect(get("light") / get("heavy")).toBeGreaterThan(w([]));
   });
 
-  it("やらずに上納が続いた行動は出にくくなる", () => {
+  it("やらずに上納しても出やすさは下がらない", () => {
     const skipped = [draw("a", 2, "skipped"), { ...draw("a", 1.9, "skipped"), id: "s2" }];
     const plan = buildPlan({ actions: [base({ id: "a" }), base({ id: "b" })], draws: skipped, now });
     const w = (id: string) => plan.offense.find((c) => c.action.id === id)!.weight;
-    expect(w("a")).toBeLessThan(w("b"));
+    expect(w("a")).toBeCloseTo(w("b"));
   });
 });
 
@@ -103,47 +103,19 @@ describe("goalBoosts", () => {
 });
 
 describe("drawStickers", () => {
-  it("重複なしで4枚選ぶ", () => {
-    const actions = ["a", "b", "c", "d", "e", "f"].map((id) => base({ id }));
+  it("ダブりありで10枚選ぶ", () => {
+    const actions = ["a", "b", "c"].map((id) => base({ id }));
     for (let i = 0; i < 20; i++) {
       const picked = drawStickers({ actions, draws: [], now });
-      expect(picked).toHaveLength(4);
-      expect(new Set(picked.map((a) => a.id)).size).toBe(4);
+      expect(picked).toHaveLength(10);
+      // 行動が3つしかなくても10枚出る=ダブりが出る
+      expect(new Set(picked.map((a) => a.id)).size).toBeLessThanOrEqual(3);
     }
   });
 
-  it("行動が4つ未満ならあるだけ選ぶ", () => {
-    expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(1);
+  it("行動が1つでも10連できる。行動がなければ空", () => {
+    expect(drawStickers({ actions: [base({ id: "a" })], draws: [], now })).toHaveLength(10);
     expect(drawStickers({ actions: [], draws: [], now })).toHaveLength(0);
-  });
-});
-
-describe("pickBan", () => {
-  const bans: Ban[] = [
-    { id: "sns", title: "SNS", createdAt: 0 },
-    { id: "buy", title: "衝動買い", createdAt: 0 },
-  ];
-
-  it("最近破った禁止事項ほど出やすい", () => {
-    const cards = [
-      card("2026-10-15", { banId: "buy", banBroken: true }),
-      card("2026-10-16", { banId: "buy", banBroken: true }),
-      card("2026-10-17", { banId: "sns" }),
-    ];
-    let buy = 0;
-    for (let i = 0; i < 400; i++) if (pickBan(bans, cards, now)?.id === "buy") buy++;
-    expect(buy).toBeGreaterThan(300);
-  });
-
-  it("前日と同じ禁止事項は出にくい", () => {
-    const cards = [card("2026-10-20", { banId: "sns" })];
-    let sns = 0;
-    for (let i = 0; i < 400; i++) if (pickBan(bans, cards, now)?.id === "sns") sns++;
-    expect(sns).toBeLessThan(140);
-  });
-
-  it("禁止事項がなければ何も返さない", () => {
-    expect(pickBan([], [], now)).toBeUndefined();
   });
 });
 
@@ -241,5 +213,46 @@ describe("配分(円グラフ)", () => {
     const actions = [base({ id: "pay", kind: "defense", loss: 3, deadline: "2026-10-21" }), base({ id: "art" })];
     const plan = buildPlan({ actions, draws: [], month: month({ [LIFE]: 4, [FREE]: 96 }), now });
     expect(plan.pDefense).toBeGreaterThan(0.4);
+  });
+});
+
+describe("残留枠", () => {
+  const acts = [base({ id: "a" }), base({ id: "b" }), base({ id: "c" })];
+  const sk = (actionId: string, cardDate: string, outcome: Draw["outcome"] = "skipped"): Draw => ({
+    id: `${actionId}@${cardDate}`, at: 0, actionId, outcome, cardDate,
+  });
+
+  it("2回以上やらずに上納された行動がなければ何も選ばない", () => {
+    expect(pickStay(acts, [], [sk("a", "2026-10-20")], now)).toBeUndefined();
+  });
+
+  it("一番多くやらずに上納された行動を選ぶ", () => {
+    const draws = [sk("a", "2026-10-18"), sk("a", "2026-10-19"), sk("b", "2026-10-18"), sk("b", "2026-10-19"), sk("b", "2026-10-20")];
+    expect(pickStay(acts, [], draws, now)).toEqual({ action: acts[1], day: 1 });
+  });
+
+  it("前のカードの残留をやらずに上納していれば同じ行動が続き、日数が増える", () => {
+    const draws = [sk("a", "2026-10-19"), sk("a", "2026-10-20"), sk("b", "2026-10-18"), sk("b", "2026-10-17"), sk("b", "2026-10-16")];
+    const cards = [card("2026-10-19", { stayId: "a@2026-10-19" }), card("2026-10-20", { stayId: "a@2026-10-20" })];
+    expect(stayDay(cards[1], cards, draws)).toBe(2);
+    expect(pickStay(acts, cards, draws, now)).toEqual({ action: acts[0], day: 3 });
+  });
+
+  it("3日続けてやらなければ抜けて、別の行動を選ぶ", () => {
+    const draws = ["2026-10-18", "2026-10-19", "2026-10-20"].map((d) => sk("a", d)).concat([sk("b", "2026-10-15"), sk("b", "2026-10-16")]);
+    const cards = ["2026-10-18", "2026-10-19", "2026-10-20"].map((d) => card(d, { stayId: `a@${d}` }));
+    expect(pickStay(acts, cards, draws, now)?.action.id).toBe("b");
+  });
+
+  it("完了したら抜ける", () => {
+    const draws = [sk("a", "2026-10-18"), sk("a", "2026-10-19"), sk("a", "2026-10-20", "done")];
+    const cards = [card("2026-10-20", { stayId: "a@2026-10-20" })];
+    expect(pickStay(acts, cards, draws, now)).toBeUndefined();
+  });
+
+  it("exclude に入れた行動は残りの枠に出ない", () => {
+    const picked = drawStickers({ actions: acts, draws: [], now }, 10, Math.random, ["a"]);
+    expect(picked).toHaveLength(10);
+    expect(picked.some((x) => x.id === "a")).toBe(false);
   });
 });

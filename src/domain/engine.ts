@@ -1,4 +1,4 @@
-import type { Action, Ban, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
+import type { Action, DailyCard, Draw, Mood, MonthPlan, WeekPlan } from "./types";
 import { HOUR, daysBetween, daysUntil, weekStartOf, parseYmd, ymd } from "./dates";
 import { FREE, LIFE, groupOf, normalizeShares, sliceKeys } from "./shares";
 
@@ -26,7 +26,7 @@ export interface DrawPlan {
 }
 
 /** 1枚のカードに載るステッカーの数 */
-export const STICKERS_PER_CARD = 4;
+export const STICKERS_PER_CARD = 10;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -169,11 +169,10 @@ export function buildPlan(input: EngineInput): DrawPlan {
     if (priority === "high") w *= 3;
     w *= energyFit(a, mood, week?.busy);
 
-    // 前日のカードに載ったもの・やらずに上納が続いたものは出にくく(ただし急ぎの防御は残す)
+    // 前日のカードに載ったものは出にくく(ただし急ぎの防御は残す)。
+    // やらずに上納したものは出やすさを下げない(避けている行動が見えなくならないように)
     const recentlyDrawn = draws.some((d) => d.actionId === a.id && nowMs - d.at < 20 * HOUR);
     if (recentlyDrawn && !urgent) w *= 0.4;
-    const skips = weekDraws.filter((d) => d.actionId === a.id && d.outcome === "skipped").length;
-    w *= urgent ? Math.max(0.4, Math.pow(0.7, skips)) : Math.pow(0.7, skips);
     if (a.kind === "offense") {
       const last = lastDoneAt(a.id, draws);
       if (last !== undefined && nowMs - last < 12 * HOUR) w *= 0.6;
@@ -213,46 +212,87 @@ function pickWeighted<T extends { weight: number }>(items: T[], rng: () => numbe
   return items[items.length - 1];
 }
 
-/** 今日のカードに載せる行動を重複なしで選ぶ */
+/** 今日のカードに載せる行動を選ぶ(10連。同じ行動が複数回出る「ダブり」あり) */
 export function drawStickers(
   input: EngineInput,
   count = STICKERS_PER_CARD,
   rng: () => number = Math.random,
+  exclude: string[] = [],
 ): Action[] {
   const plan = buildPlan(input);
-  let defense = plan.defense;
-  let offense = plan.offense;
+  const keep = (c: Candidate) => !exclude.includes(c.action.id);
+  const defense = plan.defense.filter(keep);
+  const offense = plan.offense.filter(keep);
   const picked: Action[] = [];
-  while (picked.length < count && defense.length + offense.length > 0) {
+  if (defense.length + offense.length === 0) return picked;
+  while (picked.length < count) {
     const preferred = rng() < plan.pDefense ? defense : offense;
     const c = pickWeighted(preferred.length ? preferred : [...defense, ...offense], rng)!;
     picked.push(c.action);
-    defense = defense.filter((x) => x !== c);
-    offense = offense.filter((x) => x !== c);
   }
   return picked;
 }
 
+/** 残留枠に同じ行動を置いておく最大日数 */
+export const STAY_MAX_DAYS = 3;
+/** 残留枠の対象になる、やらずに上納された回数(直近14日) */
+const STAY_MIN_SKIPS = 2;
+
+const stayDraw = (c: DailyCard, draws: Draw[]) => (c.stayId ? draws.find((d) => d.id === c.stayId) : undefined);
+
+/** このカードの残留が何日目か。前のカードで同じ行動をやらずに上納していた分だけ続く */
+export function stayDay(card: DailyCard, cards: DailyCard[], draws: Draw[]): number {
+  const cur = stayDraw(card, draws);
+  if (!cur) return 0;
+  const before = cards.filter((c) => c.date < card.date).sort((a, b) => b.date.localeCompare(a.date));
+  let day = 1;
+  for (const c of before) {
+    const d = stayDraw(c, draws);
+    if (!d || d.actionId !== cur.actionId || d.outcome !== "skipped") break;
+    day++;
+  }
+  return day;
+}
+
 /**
- * 今日の禁止事項を選ぶ。最近破ったものほど出やすく、前日と同じものは出にくい。
+ * 残留枠(やりたくないゾーン)の行動を選ぶ。
+ * 前のカードの残留をやらずに上納していて3日未満なら続ける。
+ * それ以外は、直近14日でやらずに上納された回数が一番多い行動(2回以上)を選ぶ。
  */
-export function pickBan(
-  bans: Ban[],
+export function pickStay(
+  actions: Action[],
   cards: DailyCard[],
+  draws: Draw[],
   now: Date,
-  rng: () => number = Math.random,
-): Ban | undefined {
-  const active = bans.filter((b) => !b.archived);
+  week?: WeekPlan,
+): { action: Action; day: number } | undefined {
+  const today = ymd(now);
+  const usable = (a: Action | undefined): a is Action =>
+    !!a && !a.archived && (week?.priorities[a.id] ?? "normal") !== "off";
+  const prev = cards.filter((c) => c.date < today).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const prevStay = prev && stayDraw(prev, draws);
+  let evicted: string | undefined;
+  if (prev && prevStay) {
+    const a = actions.find((x) => x.id === prevStay.actionId);
+    const day = stayDay(prev, cards, draws);
+    if (prevStay.outcome === "skipped" && day < STAY_MAX_DAYS && usable(a)) return { action: a, day: day + 1 };
+    evicted = prevStay.actionId;
+  }
+
   const since = new Date(now);
   since.setDate(since.getDate() - 14);
   const sinceKey = ymd(since);
-  const recent = cards.filter((c) => c.date >= sinceKey);
-  const last = [...cards].sort((a, b) => b.date.localeCompare(a.date))[0];
-  const weighted = active.map((b) => {
-    const broken = recent.filter((c) => c.banId === b.id && c.banBroken).length;
-    let weight = 1 + 1.5 * broken;
-    if (last?.banId === b.id) weight *= 0.3;
-    return { ban: b, weight };
-  });
-  return pickWeighted(weighted, rng)?.ban;
+  const counts = new Map<string, number>();
+  for (const d of draws) {
+    if (d.outcome !== "skipped" || d.cardDate < sinceKey || d.cardDate >= today) continue;
+    counts.set(d.actionId, (counts.get(d.actionId) ?? 0) + 1);
+  }
+  let best: { action: Action; n: number } | undefined;
+  for (const [id, n] of counts) {
+    if (id === evicted || n < STAY_MIN_SKIPS) continue;
+    const a = actions.find((x) => x.id === id);
+    if (!usable(a)) continue;
+    if (!best || n > best.n) best = { action: a, n };
+  }
+  return best && { action: best.action, day: 1 };
 }

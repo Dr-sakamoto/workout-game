@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { AllocationScreen } from "./AllocationScreen";
 import { ActionsScreen } from "./ActionsScreen";
-import { BansScreen } from "./BansScreen";
 import { HistoryScreen } from "./HistoryScreen";
 
 const TABS = [
   { id: "allocation", label: "配分" },
   { id: "actions", label: "行動" },
-  { id: "bans", label: "禁止" },
   { id: "history", label: "これまで" },
 ] as const;
 
@@ -33,7 +31,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
         <div className="sheet-body">
           {tab === "allocation" && <AllocationScreen />}
           {tab === "actions" && <ActionsScreen />}
-          {tab === "bans" && <BansScreen />}
           {tab === "history" && <HistoryScreen />}
         </div>
       </div>

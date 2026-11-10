@@ -2,8 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Action, Ban, Busy, DailyCard, Draw, MonthPlan, Priority, WeekPlan, YearGoal } from "../domain/types";
 import { BAN_PRESETS, actionsForGoal, inferKind } from "../domain/presets";
-import { drawStickers, pickBan } from "../domain/engine";
+import { STICKERS_PER_CARD, drawStickers, pickStay } from "../domain/engine";
 import { weekStartOf, ym, ymd } from "../domain/dates";
+import { rollXp } from "../domain/xp";
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -14,29 +15,26 @@ interface State {
   onboarded: boolean;
   goals: YearGoal[];
   actions: Action[];
+  /** 禁止事項(廃止済み)。過去のデータを残すためだけに持っている */
   bans: Ban[];
   months: Record<string, MonthPlan>;
   weeks: Record<string, WeekPlan>;
   draws: Draw[];
   cards: DailyCard[];
 
-  finishOnboarding: (presets: NewAction[], bans: string[]) => void;
+  finishOnboarding: (presets: NewAction[]) => void;
   addGoal: (title: string, why: string) => void;
   updateGoal: (id: string, patch: Partial<Omit<YearGoal, "id">>) => void;
   removeGoal: (id: string) => void;
   addAction: (a: ActionInput) => void;
   updateAction: (id: string, patch: Partial<ActionInput>) => void;
   removeAction: (id: string) => void;
-  addBan: (title: string) => void;
-  updateBan: (id: string, title: string) => void;
-  removeBan: (id: string) => void;
   setMonth: (patch: Partial<Omit<MonthPlan, "month">>) => void;
   setWeek: (patch: { busy?: Busy }) => void;
   setPriority: (actionId: string, p: Priority) => void;
   /** 今日のカードを引く。すでに引いていれば何もしない */
   drawCard: (now?: Date) => DailyCard | undefined;
   completeSticker: (drawId: string) => void;
-  breakBan: (date: string) => void;
   /** 今日より前のカードを上納する。やらなかったステッカーは skipped になる */
   tribute: (now?: Date) => void;
 }
@@ -79,11 +77,10 @@ export const useStore = create<State>()(
       draws: [],
       cards: [],
 
-      finishOnboarding: (presets, bans) =>
+      finishOnboarding: (presets) =>
         set((s) => ({
           onboarded: true,
           actions: [...s.actions, ...presets.map((p) => ({ ...p, id: uid(), createdAt: Date.now() }))],
-          bans: [...s.bans, ...bans.map(newBan)],
         })),
 
       addGoal: (title, why) =>
@@ -117,10 +114,6 @@ export const useStore = create<State>()(
       removeAction: (id) =>
         set((s) => ({ actions: s.actions.map((a) => (a.id === id ? { ...a, archived: true } : a)) })),
 
-      addBan: (title) => set((s) => ({ bans: [...s.bans, newBan(title)] })),
-      updateBan: (id, title) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, title } : b)) })),
-      removeBan: (id) => set((s) => ({ bans: s.bans.map((b) => (b.id === id ? { ...b, archived: true } : b)) })),
-
       setMonth: (patch) =>
         set((s) => {
           const m = currentMonth(s);
@@ -146,14 +139,16 @@ export const useStore = create<State>()(
         const s = get();
         if (todayCard(s, now)) return undefined;
         const date = ymd(now);
-        const picked = drawStickers({
-          actions: s.actions,
-          draws: s.draws,
-          cards: s.cards,
-          month: currentMonth(s, now),
-          week: currentWeek(s, now),
-          now,
-        });
+        const week = currentWeek(s, now);
+        // 残留枠: 避けがちな行動を1枠に置き、残りの枠には出さない
+        const stay = pickStay(s.actions, s.cards, s.draws, now, week);
+        const rest = drawStickers(
+          { actions: s.actions, draws: s.draws, cards: s.cards, month: currentMonth(s, now), week, now },
+          stay ? STICKERS_PER_CARD - 1 : STICKERS_PER_CARD,
+          Math.random,
+          stay ? [stay.action.id] : [],
+        );
+        const picked = stay ? [stay.action, ...rest] : rest;
         const draws: Draw[] = picked.map((a) => ({
           id: uid(),
           at: now.getTime(),
@@ -161,11 +156,10 @@ export const useStore = create<State>()(
           outcome: "pending",
           cardDate: date,
         }));
-        const ban = pickBan(s.bans, s.cards, now);
         const card: DailyCard = {
           date,
           drawIds: draws.map((d) => d.id),
-          banId: ban?.id,
+          stayId: stay ? draws[0].id : undefined,
           banBroken: false,
           tributed: false,
           drawnAt: now.getTime(),
@@ -180,7 +174,11 @@ export const useStore = create<State>()(
           if (!target || target.outcome !== "pending") return {};
           const action = s.actions.find((a) => a.id === target.actionId);
           return {
-            draws: s.draws.map((d) => (d.id === drawId ? { ...d, outcome: "done", resolvedAt: Date.now() } : d)),
+            draws: s.draws.map((d) =>
+              d.id === drawId
+                ? { ...d, outcome: "done", resolvedAt: Date.now(), ...(action?.energy === 3 ? { xp: rollXp() } : {}) }
+                : d,
+            ),
             // 期限付きの一回きりタスクは完了したら抽選対象から外す
             actions:
               action?.deadline && !action.intervalDays
@@ -188,9 +186,6 @@ export const useStore = create<State>()(
                 : s.actions,
           };
         }),
-
-      breakBan: (date) =>
-        set((s) => ({ cards: s.cards.map((c) => (c.date === date ? { ...c, banBroken: true } : c)) })),
 
       tribute: (now = new Date()) =>
         set((s) => {

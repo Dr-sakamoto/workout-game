@@ -14,7 +14,6 @@ export function HistoryScreen() {
         {cards.map((c) => {
           const items = c.drawIds.map((id) => s.draws.find((d) => d.id === id)).filter((d) => d !== undefined);
           const done = items.filter((d) => d.outcome === "done").length;
-          const ban = s.bans.find((b) => b.id === c.banId);
           const d = parseYmd(c.date);
           return (
             <li key={c.date} className="card">
@@ -29,11 +28,6 @@ export function HistoryScreen() {
                   </li>
                 ))}
               </ul>
-              {ban && (
-                <p className={c.banBroken ? "danger" : "muted"}>
-                  禁止「{ban.title}」{c.banBroken ? "を破った" : "を守った"}
-                </p>
-              )}
             </li>
           );
         })}

@@ -124,24 +124,31 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .card-count { background: var(--text); color: #fff; border-radius: 99px; padding: 1px 8px; }
 .card-empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; }
 
-.stickers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.stickers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .sticker {
-  position: relative; aspect-ratio: 3 / 4.4; border-radius: 12px; padding: 3px; cursor: pointer;
+  position: relative; aspect-ratio: 3 / 3.6; border-radius: 10px; padding: 2px; cursor: pointer;
   background: #fff; border: 1.5px solid var(--text);
   animation: sticker-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 @keyframes sticker-in { from { transform: scale(0.2) rotate(-20deg); opacity: 0; } }
 .sticker-face {
-  position: relative; height: 100%; border-radius: 9px; overflow: hidden; padding: 7px 5px;
+  position: relative; height: 100%; border-radius: 9px; overflow: hidden; padding: 5px 4px;
   display: flex; flex-direction: column; gap: 4px; background: #fff;
 }
 .sticker-title {
-  position: relative; z-index: 1; font-size: 11px; font-weight: 800; line-height: 1.3;
+  position: relative; z-index: 1; font-size: 9.5px; font-weight: 800; line-height: 1.25;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .sticker-starter {
-  position: relative; z-index: 1; font-size: 9.5px; line-height: 1.35; color: #66666c; margin-top: auto;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  position: relative; z-index: 1; font-size: 8px; line-height: 1.3; color: #66666c; margin-top: auto;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* 残留枠: 避けがちな行動を置き続ける枠 */
+.sticker.stay { border: 2px dashed var(--text); }
+.stay-tag {
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); z-index: 2;
+  font-size: 7.5px; font-weight: 800; line-height: 1; white-space: nowrap;
+  padding: 2px 4px; border-radius: 6px; background: var(--text); color: #fff;
 }
 .sticker.asking { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--stamp), 0 6px 12px rgba(0, 0, 0, 0.25); }
 
@@ -175,11 +182,11 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   position: absolute; left: 3px; right: 3px; bottom: 3px; z-index: 3; display: flex; flex-direction: column; gap: 4px;
   animation: fadein 0.15s;
 }
-.sticker-confirm button, .ban-confirm button {
+.sticker-confirm button {
   padding: 5px 0; font-size: 12px; font-weight: 700; border-radius: 8px; background: #fff; color: var(--text);
   border: 1.5px solid var(--text);
 }
-.sticker-confirm .yes, .ban-confirm .yes { background: var(--stamp); color: #fff; border-color: var(--stamp); }
+.sticker-confirm .yes { background: var(--stamp); color: #fff; border-color: var(--stamp); }
 
 /* 完了の印影 */
 .imprint {
@@ -193,6 +200,43 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 @keyframes imprint {
   from { transform: translate(-50%, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
   to { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 0.88; }
+}
+/* 過酷な行動の完了は燃える赤黒のハンコ(数字は出さない) */
+.imprint.hard {
+  color: #ff4a1c; border-color: #ff3b1a;
+  background: radial-gradient(circle at 50% 60%, #5a0a0a, #2a0505 70%);
+  box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff3b1a, 0 0 10px 2px rgba(255, 60, 20, 0.75), 0 0 22px 6px rgba(140, 10, 0, 0.55);
+  text-shadow: 0 0 4px #ff9a3c, 0 0 8px #ff2a00;
+  mix-blend-mode: normal; opacity: 1;
+  animation: imprint-hard 0.5s ease-out both, hellfire 1.4s 0.5s ease-in-out infinite alternate;
+}
+.imprint.hard::after {
+  content: ""; position: absolute; left: 50%; bottom: 78%; width: 100%; height: 85%; z-index: -1;
+  transform: translateX(-50%); transform-origin: 50% 100%; pointer-events: none;
+  background:
+    radial-gradient(ellipse 10% 30% at 50% 62%, #ffe08a 0 35%, transparent 100%),
+    radial-gradient(ellipse 17% 42% at 28% 72%, #ff8a1e 0 45%, transparent 100%),
+    radial-gradient(ellipse 20% 55% at 52% 66%, #ff3c0a 0 45%, transparent 100%),
+    radial-gradient(ellipse 16% 38% at 76% 74%, #b80c00 0 45%, transparent 100%);
+  filter: blur(0.6px);
+  animation: flame 0.6s ease-in-out infinite alternate;
+}
+@keyframes imprint-hard {
+  0% { transform: translate(-50%, -50%) rotate(-14deg) scale(2.2); opacity: 0; }
+  55% { transform: translate(-50%, -50%) rotate(-10deg) scale(0.9); opacity: 1; }
+  75% { transform: translate(-50%, -50%) rotate(-17deg) scale(1.04); }
+  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+}
+@keyframes hellfire {
+  from { box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff3b1a, 0 0 8px 1px rgba(255, 40, 10, 0.6), 0 0 18px 4px rgba(120, 0, 0, 0.5); }
+  to { box-shadow: inset 0 0 0 2px #1a0202, inset 0 0 0 4px #ff7a2a, 0 0 14px 4px rgba(255, 110, 30, 0.85), 0 0 28px 8px rgba(160, 20, 0, 0.6); }
+}
+@keyframes flame {
+  from { transform: translateX(-50%) scaleY(0.85) skewX(-4deg); opacity: 0.8; }
+  to { transform: translateX(-50%) scaleY(1.15) skewX(5deg); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .imprint.hard, .imprint.hard::after { animation: none; }
 }
 .sticker.done .sticker-face { filter: saturate(0.7) brightness(0.97); }
 
@@ -213,31 +257,6 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   60% { transform: translateX(-50%) translateY(calc(50% + 36px)); opacity: 1; }
   100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
 }
-.ban .stamp-tool.pressing { animation-name: stamp-press-ban; }
-@keyframes stamp-press-ban {
-  0% { transform: translateX(-50%) translateY(-10px); }
-  45% { transform: translateX(-50%) translateY(46px) scaleY(0.92); }
-  60% { transform: translateX(-50%) translateY(42px); opacity: 1; }
-  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
-}
-
-/* 禁止事項の帯 */
-.ban {
-  position: relative; margin-top: 10px; min-height: 58px; border-radius: 10px; padding: 8px 10px 8px 12px; cursor: pointer;
-  display: flex; align-items: center; gap: 10px; color: #fff; background: var(--text);
-  animation: sticker-in 0.45s 0.8s cubic-bezier(0.2, 1.4, 0.4, 1) both;
-}
-.ban.asking { box-shadow: 0 0 0 3px var(--stamp); }
-.ban-label { flex: none; font-size: 10px; font-weight: 800; color: #fff; border: 1px solid rgba(255, 255, 255, 0.6); padding: 2px 7px; border-radius: 6px; }
-.ban-title { flex: 1; font-weight: 800; font-size: 14px; line-height: 1.3; }
-.ban-confirm { display: flex; gap: 6px; flex: none; }
-.ban-confirm button { padding: 6px 12px; border-color: #fff; }
-.ban .imprint { width: 56px; height: 56px; font-size: 15px; left: auto; right: 20px; transform: translate(0, -50%) rotate(-14deg); mix-blend-mode: normal; background: rgba(255, 255, 255, 0.85); animation-name: imprint-ban; }
-@keyframes imprint-ban {
-  from { transform: translate(0, -50%) rotate(-14deg) scale(1.8); opacity: 0; }
-  to { transform: translate(0, -50%) rotate(-14deg) scale(1); opacity: 0.92; }
-}
-.ban.broken .ban-title { text-decoration: line-through; opacity: 0.7; }
 
 /* 上納 */
 .daily-card.mode-tribute { animation: tribute 2.2s ease-in forwards; }
@@ -362,3 +381,15 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .energy-pick button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 11px 4px; }
 .energy-pick button small { font-size: 10.5px; opacity: 0.65; }
 .energy-pick button.on { background: var(--text); color: #fff; border-color: var(--text); }
+
+/* ===== 上納のときだけ出るXP ===== */
+.xp-banner {
+  position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; pointer-events: none;
+  background: var(--text); color: #fff; border-radius: 16px; padding: 12px 22px; animation: xp-in 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+.xp-banner.up { background: var(--stamp); }
+.xp-lv { font-size: 22px; font-weight: 900; }
+.xp-gain { font-size: 15px; font-weight: 800; margin-top: 2px; }
+.xp-bonus { font-size: 12px; font-weight: 900; color: #ffd75e; margin-top: 2px; }
+.xp-total { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+@keyframes xp-in { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }

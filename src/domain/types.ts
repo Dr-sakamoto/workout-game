@@ -32,7 +32,7 @@ export interface Action {
   createdAt: number;
 }
 
-/** その日やってはいけないこと */
+/** その日やってはいけないこと(廃止済み。過去のデータのためだけに型を残す) */
 export interface Ban {
   id: string;
   title: string;
@@ -82,12 +82,16 @@ export interface Draw {
   /** どの日のカードか(YYYY-MM-DD) */
   cardDate: string;
   resolvedAt?: number;
+  /** 完了したときに決まったXP(過酷な行動のみ。上納のときにだけ見せる) */
+  xp?: number;
 }
 
 /** 1日1枚のカード(台紙)。日付が変わると上納される */
 export interface DailyCard {
   date: string;
   drawIds: string[];
+  /** 残留枠(避けがちな行動を置き続ける枠)のステッカーの drawId */
+  stayId?: string;
   banId?: string;
   banBroken: boolean;
   tributed: boolean;
