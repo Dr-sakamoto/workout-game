@@ -29,7 +29,7 @@ npm run build   # 本番ビルド(PWA)
 src/
   domain/      抽選ロジック(engine.ts)・型・プリセット
   store/       zustand ストア
-  three/       3D のガチャ本体(GachaScene.ts)
+  three/       3D のガチャ(GachaScene.ts=シーンと演出 / machine.ts=モデル / aging.ts=質感)
   components/  ホーム / カード / 設定(行動・週・月・年・これまで) / 初回設定
   lib/         効果音
 ```
