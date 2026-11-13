@@ -108,7 +108,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 
 /* ===== カード(台紙) ===== */
 .daily-card {
-  position: relative; width: min(400px, 100%); color: var(--text); background: #fff;
+  position: relative; width: min(400px, 100%); max-width: 100%; min-width: 0; color: var(--text); background: #fff;
   border: 2px solid var(--text); border-radius: 16px; padding: 10px 10px 12px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
   animation: card-in 0.6s cubic-bezier(0.2, 1.2, 0.4, 1) both;
@@ -124,7 +124,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .card-count { background: var(--text); color: #fff; border-radius: 99px; padding: 1px 8px; }
 .card-empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; }
 
-.stickers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.stickers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; min-width: 0; }
 .sticker {
   position: relative; aspect-ratio: 3 / 3.6; border-radius: 10px; padding: 2px; cursor: pointer;
   background: #fff; border: 1.5px solid var(--text);
@@ -144,10 +144,10 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 /* 残留枠: 避けがちな行動を置き続ける枠 */
-.sticker.stay { border: 2px dashed var(--text); }
+.sticker.stay { border: 3px solid #000; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000; z-index: 1; }
 .stay-tag {
   position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); z-index: 2;
-  font-size: 7.5px; font-weight: 800; line-height: 1; white-space: nowrap;
+  font-size: 7.5px; font-weight: 800; line-height: 1; white-space: nowrap; max-width: 100%; overflow: hidden;
   padding: 2px 4px; border-radius: 6px; background: var(--text); color: #fff;
 }
 .sticker.asking { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--stamp), 0 6px 12px rgba(0, 0, 0, 0.25); }
@@ -393,3 +393,14 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .xp-bonus { font-size: 12px; font-weight: 900; color: #ffd75e; margin-top: 2px; }
 .xp-total { font-size: 11px; opacity: 0.7; margin-top: 2px; }
 @keyframes xp-in { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
+
+/* レベル表示(いつでも見える小さなバッジ) */
+.lv-badge {
+  position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 12px; pointer-events: none;
+  background: var(--text); color: #fff; border-radius: 12px; padding: 4px 10px 6px; min-width: 72px;
+}
+.lv-badge b { font-size: 13px; font-weight: 900; }
+.lv-badge small { font-size: 9.5px; opacity: 0.7; margin-left: 6px; }
+.lv-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.25); margin-top: 3px; overflow: hidden; }
+.lv-bar i { display: block; height: 100%; background: #ffd75e; }
+.xp-banner { z-index: 5; }
