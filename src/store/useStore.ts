@@ -140,13 +140,12 @@ export const useStore = create<State>()(
         if (todayCard(s, now)) return undefined;
         const date = ymd(now);
         const week = currentWeek(s, now);
-        // 残留枠: 避けがちな行動を1枠に置き、残りの枠には出さない
+        // 残留枠: 避けがちな行動を1枠に置く。残りの枠でも普通に引かれ、ダブりうる
         const stay = pickStay(s.actions, s.cards, s.draws, now, week);
         const rest = drawStickers(
           { actions: s.actions, draws: s.draws, cards: s.cards, month: currentMonth(s, now), week, now },
           stay ? STICKERS_PER_CARD - 1 : STICKERS_PER_CARD,
           Math.random,
-          stay ? [stay.action.id] : [],
         );
         const picked = stay ? [stay.action, ...rest] : rest;
         const draws: Draw[] = picked.map((a) => ({

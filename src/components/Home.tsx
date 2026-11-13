@@ -5,7 +5,7 @@ import { DailyCardView } from "./DailyCardView";
 import { Settings } from "./Settings";
 import { ymd } from "../domain/dates";
 import { sound } from "../lib/sound";
-import { bonusOf, gainedXp, levelOf, totalXp } from "../domain/xp";
+import { bonusOf, gainedXp, levelOf, totalXp, xpForLevel } from "../domain/xp";
 
 /**
  * tribute=前日までのカードを上納中 / ready=ハンドルを回せる / dropping=カプセルが出てくる途中
@@ -110,8 +110,12 @@ export function Home() {
   useEffect(() => {
     if (phase !== "tribute") return;
     const t1 = setTimeout(() => {
-      sound.chime();
-      sceneRef.current?.receiveTribute();
+      try {
+        sound.chime();
+        sceneRef.current?.receiveTribute();
+      } catch {
+        // 演出が失敗してもXPの表示は止めない
+      }
       const s = useStore.getState();
       const stale = staleCards(s);
       const gain = gainedXp(stale, s.draws, s.actions);
@@ -132,6 +136,10 @@ export function Home() {
   }, [phase]);
 
   const stale = staleCards(store);
+  const xpNow = totalXp(store.cards, store.draws, store.actions);
+  const lvNow = levelOf(xpNow);
+  const lvFrom = xpForLevel(lvNow);
+  const lvPct = Math.round(((xpNow - lvFrom) / (xpForLevel(lvNow + 1) - lvFrom)) * 100);
   const shown =
     phase === "tribute"
       ? [...stale].sort((a, b) => b.date.localeCompare(a.date))[0]
@@ -143,6 +151,11 @@ export function Home() {
     <div className="home" style={{ "--card-area": `${cardArea(window.innerHeight)}px` } as React.CSSProperties}>
       <div className="world" ref={hostRef} />
 
+      <div className="lv-badge">
+        <b>Lv {lvNow}</b>
+        <small>{xpNow} XP</small>
+        <div className="lv-bar"><i style={{ width: `${lvPct}%` }} /></div>
+      </div>
       <div className="hint-top">本体をタップで設定</div>
       {phase === "ready" && <div className="hint">ハンドルをぐるっと1周まわそう</div>}
       {phase === "ready" && handlePos && (
