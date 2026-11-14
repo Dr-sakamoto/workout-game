@@ -121,7 +121,7 @@ export function Home() {
       const gain = gainedXp(stale, s.draws, s.actions);
       const before = totalXp(s.cards, s.draws, s.actions);
       const xp = before + gain;
-      setXpBanner({ gain, xp, level: levelOf(xp), up: levelOf(xp) > levelOf(before), bonus: bonusOf(stale, s.draws) });
+      setXpBanner({ gain, xp, level: levelOf(xp), up: levelOf(xp) > levelOf(before), bonus: bonusOf(stale, s.draws, s.actions) });
       setTimeout(() => setXpBanner(null), 3600);
     }, 1300);
     const t2 = setTimeout(() => {

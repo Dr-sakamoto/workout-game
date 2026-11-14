@@ -175,7 +175,7 @@ export const useStore = create<State>()(
           return {
             draws: s.draws.map((d) =>
               d.id === drawId
-                ? { ...d, outcome: "done", resolvedAt: Date.now(), ...(action?.energy === 3 ? { xp: rollXp() } : {}) }
+                ? { ...d, outcome: "done", resolvedAt: Date.now(), ...(action ? { xp: rollXp(action.energy) } : {}) }
                 : d,
             ),
             // 期限付きの一回きりタスクは完了したら抽選対象から外す
