@@ -1,17 +1,22 @@
-import type { Action, DailyCard, Draw } from "./types";
+import type { Action, DailyCard, Draw, Energy } from "./types";
 
-/** 過酷(体力コスト3)な行動を1つ終えるごとに入る基本のXP */
-export const XP_PER_HARD = 10;
+/** 行動を1つ終えるごとに入る基本のXP(体力コスト1 / 2 / 3) */
+export const XP_BY_ENERGY: Record<Energy, number> = { 1: 3, 2: 7, 3: 15 };
+/** 過酷(体力コスト3)な行動の基本XP */
+export const XP_PER_HARD = XP_BY_ENERGY[3];
+
+export const baseXp = (energy: Energy | undefined): number => XP_BY_ENERGY[energy ?? 1];
 
 /**
- * 過酷な行動を完了したときのXPを決める。基本は固定で、たまにボーナス(×2 / まれに×3)。
+ * 行動を完了したときのXPを決める。基本は体力コストで固定で、たまにボーナス(×2 / まれに×3)。
  * 完了の時点で決めて保存し、見せるのは上納のときだけ
  */
-export function rollXp(rng: () => number = Math.random): number {
+export function rollXp(energy: Energy, rng: () => number = Math.random): number {
   const r = rng();
-  if (r < 0.05) return XP_PER_HARD * 3;
-  if (r < 0.2) return XP_PER_HARD * 2;
-  return XP_PER_HARD;
+  const base = baseXp(energy);
+  if (r < 0.05) return base * 3;
+  if (r < 0.2) return base * 2;
+  return base;
 }
 
 /** レベルnに必要な累計XP。1→2は20、2→3は60…と少しずつ遠くなる */
@@ -27,7 +32,8 @@ export function levelOf(xp: number): number {
 function xpOf(d: Draw, actions: Action[]): number {
   if (d.outcome !== "done") return 0;
   if (d.xp !== undefined) return d.xp;
-  return actions.find((a) => a.id === d.actionId)?.energy === 3 ? XP_PER_HARD : 0;
+  const a = actions.find((x) => x.id === d.actionId);
+  return a ? baseXp(a.energy) : 0;
 }
 
 function doneDraws(cards: DailyCard[], draws: Draw[]): Draw[] {
@@ -49,6 +55,12 @@ export function gainedXp(stale: DailyCard[], draws: Draw[], actions: Action[]): 
 }
 
 /** これから上納するカードで出たボーナスの最大倍率(なければ1) */
-export function bonusOf(stale: DailyCard[], draws: Draw[]): number {
-  return Math.max(1, ...doneDraws(stale, draws).map((d) => (d.xp ?? 0) / XP_PER_HARD));
+export function bonusOf(stale: DailyCard[], draws: Draw[], actions: Action[]): number {
+  return Math.max(
+    1,
+    ...doneDraws(stale, draws).map((d) => {
+      const a = actions.find((x) => x.id === d.actionId);
+      return a ? (d.xp ?? 0) / baseXp(a.energy) : 1;
+    }),
+  );
 }
