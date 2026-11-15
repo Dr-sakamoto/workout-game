@@ -394,13 +394,4 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .xp-total { font-size: 11px; opacity: 0.7; margin-top: 2px; }
 @keyframes xp-in { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
 
-/* レベル表示(いつでも見える小さなバッジ) */
-.lv-badge {
-  position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 12px; pointer-events: none;
-  background: var(--text); color: #fff; border-radius: 12px; padding: 4px 10px 6px; min-width: 72px;
-}
-.lv-badge b { font-size: 13px; font-weight: 900; }
-.lv-badge small { font-size: 9.5px; opacity: 0.7; margin-left: 6px; }
-.lv-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.25); margin-top: 3px; overflow: hidden; }
-.lv-bar i { display: block; height: 100%; background: #ffd75e; }
 .xp-banner { z-index: 5; }
